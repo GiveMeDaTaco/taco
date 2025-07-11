@@ -14,6 +14,10 @@ class WaterfallEngine:
         self.runner = runner
         self.logger = logger or get_logger("waterfall")
 
+    def num_steps(self) -> int:
+        """Return the number of grouping tasks that run() will execute."""
+        return len(self.cfg.count_columns)
+
     def _extract_check_columns(self, conditions_cfg) -> list:
         """
         Flatten and sort all check names from conditions config.
@@ -38,7 +42,7 @@ class WaterfallEngine:
         # sort by trailing numeric
         return sorted(cols, key=lambda x: int(x.rsplit('_', 1)[-1]))
 
-    def run(self, eligibility_engine):
+    def run(self, eligibility_engine, progress=None):
         """
         Compute waterfall metrics entirely in-database, then export report.
         """
@@ -69,6 +73,24 @@ class WaterfallEngine:
             for lst in elig_cfg.conditions.main.others.values():
                 for chk in lst:
                     base_checks.append(chk.name)
+        # Build mapping of check names to SQL logic for labels
+        check_map = {}
+        # main BA checks
+        for chk in elig_cfg.conditions.main.BA:
+            check_map[chk.name] = chk.sql
+        # main others
+        if elig_cfg.conditions.main.others:
+            for lst in elig_cfg.conditions.main.others.values():
+                for chk in lst:
+                    check_map[chk.name] = chk.sql
+        # channel checks
+        for tmpl_cfg in elig_cfg.conditions.channels.values():
+            for chk in tmpl_cfg.BA:
+                check_map[chk.name] = chk.sql
+            if tmpl_cfg.others:
+                for lst in tmpl_cfg.others.values():
+                    for chk in lst:
+                        check_map[chk.name] = chk.sql
         # Loop through each grouping of identifiers
         for grp in groups:
             name = grp['name']
@@ -125,9 +147,11 @@ class WaterfallEngine:
                     )
                 df_ch['section'] = channel
                 df_sections.append(df_ch)
-            # Concatenate all sections and write single report
-            # Concatenate all sections
+            # Concatenate all sections into a single DataFrame
             result_df = pd.concat(df_sections, ignore_index=True)
+            # Replace check_name labels with the underlying SQL logic
+            if 'check_name' in result_df.columns:
+                result_df['check_name'] = result_df['check_name'].map(lambda nm: check_map.get(nm, nm))
             # Override column names to full stat names, preserving order
             full_parts = ['unique_drops', 'incremental_drops', 'remaining', 'cumulative_drops']
             cols_new = ['check_name'] + full_parts + ['section']
@@ -171,7 +195,46 @@ class WaterfallEngine:
                         if fill:
                             for col in range(1, len(result_df.columns)+1):
                                 ws.cell(row=idx, column=col).fill = fill
-                self.logger.info(f'Waterfall report with channels saved to {out_path}')
+                # After styling, insert table definitions below the data
+                try:
+                    rows, cols = result_df.shape
+                    # Determine start row for table metadata (header + data + one blank)
+                    start_row = rows + 3
+                    # Header for tables section
+                    ws.cell(row=start_row, column=1).value = 'Source Tables:'
+                    from openpyxl.styles import Font
+                    ws.cell(row=start_row, column=1).font = Font(bold=True)
+                    # Write each table's FROM/JOIN clause
+                    for i, tbl in enumerate(elig_cfg.tables, start=1):
+                        if i == 1:
+                            text = f"FROM {tbl.name} {tbl.alias}"
+                            if tbl.where_conditions:
+                                text += f" WHERE {tbl.where_conditions}"
+                        else:
+                            jt = tbl.join_type or 'JOIN'
+                            text = f"{jt} {tbl.name} {tbl.alias}"
+                            if tbl.join_conditions:
+                                text += f" ON {tbl.join_conditions}"
+                            if tbl.where_conditions:
+                                text += f" WHERE {tbl.where_conditions}"
+                        ws.cell(row=start_row + i, column=1).value = text
+                except Exception:
+                    pass
+                # Log file write with row/column counts
+                try:
+                    rows, cols = result_df.shape
+                    self.logger.info(f'Waterfall report saved to {out_path} ({rows} rows, {cols} columns)')
+                except Exception:
+                    self.logger.info(f'Waterfall report saved to {out_path}')
             except Exception as e:
                 self.logger.warning(f'Excel styling failed ({e}), writing plain file')
                 write_dataframe(result_df, out_path, fmt='excel')
+                # Log plain write with counts
+                try:
+                    rows, cols = result_df.shape
+                    self.logger.info(f'Waterfall report (plain) saved to {out_path} ({rows} rows, {cols} columns)')
+                except Exception:
+                    self.logger.info(f'Waterfall report (plain) saved to {out_path}')
+            # Update progress bar for this grouping
+            if progress:
+                progress.update("Waterfall")

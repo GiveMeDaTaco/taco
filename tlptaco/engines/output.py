@@ -11,8 +11,12 @@ class OutputEngine:
         self.cfg = cfg
         self.runner = runner
         self.logger = logger or get_logger("output")
+        
+    def num_steps(self) -> int:
+        """Return the number of output channels to process."""
+        return len(self.cfg.channels)
 
-    def run(self, eligibility_engine):
+    def run(self, eligibility_engine, progress=None):
         """
         Execute each channel's output SQL, fetch results as DataFrame,
         apply any custom transformations, and write to file.
@@ -52,3 +56,15 @@ class OutputEngine:
             path = f"{out_cfg.file_location}/{out_cfg.file_base_name}.{fmt}"
             self.logger.info(f"Writing output file for channel {channel} to {path}")
             write_dataframe(df, path, fmt, **(out_cfg.output_options.additional_arguments or {}))
+            # Log file write details
+            try:
+                rows, cols = df.shape
+                self.logger.info(f'Output file saved to {path} ({rows} rows, {cols} columns)')
+            except Exception:
+                self.logger.info(f'Output file saved to {path}')
+            # Update progress bar for this channel
+            if progress:
+                progress.update("Output")
+            # Update progress bar for this channel
+            if progress:
+                progress.update("Output")

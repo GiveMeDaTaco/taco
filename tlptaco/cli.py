@@ -17,24 +17,41 @@ def main():
     parser.add_argument("--mode", "-m", choices=["full", "presizing"], default="full",
                         help="Run mode: full (includes output) or presizing (eligibility+waterfall only)")
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose (DEBUG) console output")
+    parser.add_argument("--progress", "-p", action="store_true", help="Show progress bars for pipeline stages (requires rich)")
     args = parser.parse_args()
 
     config = load_config(args.config)
     logger = configure_logging(config.logging, verbose=args.verbose)
     runner = DBRunner(config.database, logger)
 
-    # Eligibility stage
-    eligibility = EligibilityEngine(config.eligibility, runner, logger)
-    eligibility.run()
-
-    # Waterfall stage
-    waterfall = WaterfallEngine(config.waterfall, runner, logger)
-    waterfall.run(eligibility)
-
+    # Instantiate engines
+    eligibility_engine = EligibilityEngine(config.eligibility, runner, logger)
+    waterfall_engine = WaterfallEngine(config.waterfall, runner, logger)
     if args.mode == "full":
-        # Output stage
-        output = OutputEngine(config.output, runner, logger)
-        output.run(eligibility)
+        output_engine = OutputEngine(config.output, runner, logger)
+
+    if args.progress:
+        # Lazy import of ProgressManager to avoid requiring rich if unused
+        from tlptaco.utils.loading_bar import ProgressManager
+        # Determine steps for each stage
+        elig_steps = eligibility_engine.num_steps()
+        wf_steps = waterfall_engine.num_steps()
+        layers = [("Eligibility", elig_steps), ("Waterfall", wf_steps)]
+        if args.mode == "full":
+            out_steps = output_engine.num_steps()
+            layers.append(("Output", out_steps))
+        # Run with progress bars
+        with ProgressManager(layers, units="steps") as pm:
+            eligibility_engine.run(progress=pm)
+            waterfall_engine.run(eligibility_engine, progress=pm)
+            if args.mode == "full":
+                output_engine.run(eligibility_engine, progress=pm)
+    else:
+        # Run without progress bars
+        eligibility_engine.run()
+        waterfall_engine.run(eligibility_engine)
+        if args.mode == "full":
+            output_engine.run(eligibility_engine)
 
     runner.cleanup()
 

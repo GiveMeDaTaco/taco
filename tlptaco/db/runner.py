@@ -1,6 +1,7 @@
 """
 Simple runner to orchestrate multiple SQL executions.
 """
+import time
 from typing import List
 from tlptaco.db.connection import DBConnection
 
@@ -12,8 +13,16 @@ class DBRunner:
         self.logger = logger
 
     def run(self, sql: str):
-        self.logger.info(f"Executing SQL")
-        return self.conn.execute(sql)
+        """
+        Execute a SQL statement, log the SQL text and timing, and return the cursor.
+        """
+        start = time.time()
+        self.logger.info("Executing SQL:")
+        self.logger.info(sql)
+        cur = self.conn.execute(sql)
+        duration = time.time() - start
+        self.logger.info(f"SQL execution finished in {duration:.2f}s")
+        return cur
 
     def run_many(self, sql_list: List[str]):
         results = []
@@ -22,8 +31,20 @@ class DBRunner:
         return results
 
     def to_df(self, sql: str):
-        self.logger.info("Fetching data to DataFrame")
-        return self.conn.to_df(sql)
+        """
+        Execute a SQL query and return a pandas DataFrame, logging SQL text, timing, and shape.
+        """
+        start = time.time()
+        self.logger.info("Fetching data to DataFrame:")
+        self.logger.info(sql)
+        df = self.conn.to_df(sql)
+        duration = time.time() - start
+        try:
+            rows, cols = df.shape
+            self.logger.info(f"Fetched DataFrame with {rows} rows and {cols} columns in {duration:.2f}s")
+        except Exception:
+            self.logger.info(f"Fetched DataFrame in {duration:.2f}s")
+        return df
 
     def fastload(self, df, **kwargs):
         self.logger.info("Fastloading DataFrame")
