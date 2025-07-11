@@ -1,0 +1,22 @@
+-- Jinja2 template for final output SQL per channel
+-- Context:
+--   columns: list of columns to select (e.g. ['a.id', 'a.name', ...])
+--   eligibility_source: subquery or table name to pull from
+--   alias: alias for eligibility_source (e.g. 'a')
+--   cases: list of dicts {condition: SQL condition, template: template_name}
+--   base_where: list of base WHERE clauses (strings)
+--   possible_templates: list of template names (strings) for final filter
+-- TODO alter template to include ability to join in other tables and do other conditions (e.g., OR)
+SELECT
+    {{ columns|join(', ') }},
+    CASE
+{%- for c in cases %}
+        WHEN {{ c.condition }} THEN '{{ c.template }}'
+{%- endfor %}
+        ELSE NULL
+    END AS template_id
+FROM {{ eligibility_source }} {{ alias }}
+{%- if base_where %}
+WHERE {{ base_where|join(' AND ') }}
+{%- endif %}
+  AND template_id IN ({{ possible_templates|join(', ') }});

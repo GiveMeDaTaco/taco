@@ -1,0 +1,62 @@
+logging:
+  level: INFO
+  file: tlptaco.log
+  debug_file: tlptaco_debug.log
+
+database:
+  host: "myhost"
+  user: "myuser"
+  password: "mypassword"
+  logmech: "KRB5"
+
+eligibility:
+  eligibility_table: "temp_elig"
+  conditions:
+    main:
+      BA:
+        - name: main_BA_1
+          sql: "a.flag1 = 1"
+          description: "Main base check"
+        - name: main_BA_2
+          sql: "{pass_all_prior} AND a.flag2 = 1"
+          description: "Main second check"
+      others: {}
+    channels:
+      CH1:
+        BA:
+          - name: CH1_BA_1
+            sql: "a.flag1 = 1"
+            description: "Channel base"
+        others:
+          T1:
+            - name: CH1_T1_1
+              sql: "{pass_all_prior} AND a.flagA = 'X'"
+              description: "Template 1"
+  tables:
+    - name: "mydb.source_table"
+      alias: "a"
+      sql: ""
+      join_type: ""
+      join_conditions: ""
+      where_conditions: ""
+      unique_index: ""
+      collect_stats: []
+  unique_identifiers:
+    - "a.record_id"
+
+waterfall:
+  output_directory: "output"
+  count_columns:
+    - "a.record_id"
+
+output:
+  channels:
+    default:
+      sql: |
+        SELECT a.record_id, a.flag1, a.flag2 FROM {{ eligibility_table }} a
+      file_location: "output"
+      file_base_name: "final_output"
+      output_options:
+        format: "csv"
+        additional_arguments: {}
+        custom_function: ""

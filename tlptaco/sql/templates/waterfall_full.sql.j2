@@ -1,0 +1,47 @@
+-- Waterfall full metrics SQL using a single CTE
+-- Context:
+--   eligibility_table: base eligibility table name (with alias)
+--   unique_identifiers: list of identifiers with alias (e.g. ['a.pty_id', 'a.accno'])
+--   unique_without_aliases: list of identifier columns only (e.g. ['pty_id', 'accno'])
+--   check_columns: ordered list of check column names (e.g. ['main_BA_1', 'main_BA_2', ...])
+WITH flags AS (
+  SELECT
+    {% for uid in unique_identifiers %}{{ uid }}{{ "," if not loop.last }}
+    {%- endfor %}
+    {% if check_columns %},
+    {% for col in check_columns %}
+      MAX({{ col }}) AS max_{{ col }}{{ "," if not loop.last }}
+    {% endfor %}
+    {% endif %}
+  FROM {{ eligibility_table }} AS c
+  {%- if pre_filter %}
+  WHERE {{ pre_filter }}
+  {%- endif %}
+  GROUP BY {{ unique_identifiers|join(', ') }}
+)
+
+{%- for part in ['unique_drops', 'incremental_drops', 'remaining', 'cumulative_drops'] %}
+SELECT
+  '{{ part }}' AS stat_name,
+  {%- for col in check_columns %}
+  {%- if part == 'unique_drops' %}
+    SUM(CASE WHEN max_{{ col }} = 0 THEN 1 ELSE 0 END) AS {{ col }}
+  {%- elif part == 'incremental_drops' %}
+    SUM(CASE WHEN max_{{ col }} = 0
+      {%- for prev in check_columns[:loop.index0] %} AND max_{{ prev }} = 1{%- endfor %}
+      THEN 1 ELSE 0 END) AS {{ col }}
+  {%- elif part == 'remaining' %}
+    SUM(CASE WHEN max_{{ col }} = 1
+      {%- for prev in check_columns[:loop.index0] %} AND max_{{ prev }} = 1{%- endfor %}
+      THEN 1 ELSE 0 END) AS {{ col }}
+  {%- elif part == 'cumulative_drops' %}
+    COUNT(*) - SUM(CASE WHEN max_{{ col }} = 1
+      {%- for prev in check_columns[:loop.index0] %} AND max_{{ prev }} = 1{%- endfor %}
+      THEN 1 ELSE 0 END) AS {{ col }}
+  {%- endif %}{{ "," if not loop.last }}
+  {%- endfor %}
+FROM flags
+{%- if not loop.last %}
+UNION ALL
+{%- endif %}
+{%- endfor %};

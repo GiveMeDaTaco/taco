@@ -1,0 +1,20 @@
+-- Jinja2 template for waterfall flags table
+-- Context:
+--   flags_table: name of the aggregated max-flags table
+--   eligibility_table: source eligibility table name
+--   unique_identifiers: list of identifiers with alias (e.g. ['a.col', 'b.col'])
+--   unique_without_aliases: list of column names only
+--   check_columns: list of check column names (e.g. ['main_BA_1', 'ch_T1_2', ...])
+CREATE TABLE {{ flags_table }} AS (
+    SELECT
+    {%- for uid in unique_identifiers %}
+        {{ uid }}{{ "," if not loop.last }}
+    {%- endfor %}
+    {%- if check_columns %},
+    {%- for col in check_columns %}
+        MAX({{ col }}) AS max_{{ col }}{{ "," if not loop.last }}
+    {%- endfor %}
+    {%- endif %}
+    FROM {{ eligibility_table }}
+    GROUP BY {{ unique_without_aliases|join(', ') }}
+) WITH DATA PRIMARY INDEX ({{ unique_without_aliases|join(', ') }});

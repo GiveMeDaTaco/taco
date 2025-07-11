@@ -1,0 +1,100 @@
+logging:
+  level: INFO
+  file: logs/tlptaco.log
+  debug_file: logs/tlptaco.debug.log
+
+database:
+  host: testwf-ogei3aaf70dllgfc.env.clearscape.teradata.com
+  user: demo_user
+  password: BeStrong
+  logmech: LDAP
+
+eligibility:
+  # Use default database (omitting schema)
+  eligibility_table: eligibility_demo
+  unique_identifiers:
+    - c.customer_id
+  tables:
+    # Main customer table (default database)
+    - name: customers
+      alias: c
+      sql: "SELECT customer_id, status FROM mydb.customers"
+      join_type: ""
+      join_conditions: ""
+      where_conditions: "c.status IN ('Active','Pending')"
+      unique_index: customer_id
+      collect_stats: []
+    # Sales table (default database)
+    - name: sales
+      alias: s
+      sql: "SELECT customer_id, amount FROM mydb.sales"
+      join_type: "LEFT JOIN"
+      join_conditions: "s.customer_id = c.customer_id"
+      where_conditions: ""
+      unique_index: customer_id
+      collect_stats: []
+
+  conditions:
+    main:
+      BA:
+        - name: has_any_sales_1
+          sql: "s.amount > 0"
+          description: "At least one sale"
+        - name: has_large_sale_2
+          sql: "s.amount >= 100"
+          description: "Large sale"
+      others: {}
+    channels:
+      email:
+        BA:
+          - name: email_optin_3
+            sql: "c.status = 'Active'"
+            description: "Email opt-in"
+        others: {}
+      sms:
+        BA:
+          - name: sms_optin_4
+            sql: "c.status = 'Pending'"
+            description: "SMS opt-in"
+        others: {}
+
+waterfall:
+  output_directory: reports/waterfall
+  count_columns:
+    - c.customer_id
+
+output:
+  channels:
+    email:
+      sql: |
+        SELECT
+          c.customer_id,
+          CASE WHEN s.amount>0 THEN 1 ELSE 0 END AS has_any_sales,
+          'EMAIL' AS channel
+        FROM {eligibility_table} AS c
+        LEFT JOIN sales AS s ON s.customer_id = c.customer_id
+        WHERE /* any channel-specific filter */ 1=1
+      file_location: reports/email
+      file_base_name: email_list
+      output_options:
+        format: csv
+        additional_arguments: {}
+        custom_function: ""
+      unique_on:
+        - customer_id
+    sms:
+      sql: |
+        SELECT
+          c.customer_id,
+          CASE WHEN s.amount>=100 THEN 1 ELSE 0 END AS large_sale,
+          'SMS' AS channel
+        FROM {eligibility_table} AS c
+        LEFT JOIN sales AS s ON s.customer_id = c.customer_id
+      file_location: reports/sms
+      file_base_name: sms_list
+      output_options:
+        format: parquet
+        additional_arguments: {}
+        custom_function: ""
+      unique_on:
+        - customer_id
