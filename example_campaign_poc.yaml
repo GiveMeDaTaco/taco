@@ -1,0 +1,178 @@
+logging:
+  level: INFO
+  file: ../logs/tlptaco_poc.log
+  debug_file: ../logs/tlptaco_poc.debug.log
+
+database:
+  host: testwf-ogei3aaf70dllgfc.env.clearscape.teradata.com
+  user: demo_user
+  password: BeStrong
+  logmech: LDAP
+
+eligibility:
+  eligibility_table: eligibility_poc
+  unique_identifiers:
+    - c.customer_id
+    - a.account_id
+    - r.region_id
+    - s.segment_id
+  tables:
+    - name: customers
+      alias: c
+      sql: "SELECT customer_id, status FROM customers"
+      join_type: ""
+      join_conditions: ""
+      where_conditions: ""
+      unique_index: customer_id
+      collect_stats: []
+    - name: accounts
+      alias: a
+      sql: "SELECT customer_id, account_id, acct_type FROM accounts"
+      join_type: "LEFT JOIN"
+      join_conditions: "a.customer_id = c.customer_id"
+      where_conditions: ""
+      unique_index: account_id
+      collect_stats: []
+    - name: regions
+      alias: r
+      sql: "SELECT customer_id, region_id, region_type FROM regions"
+      join_type: "LEFT JOIN"
+      join_conditions: "r.customer_id = c.customer_id"
+      where_conditions: ""
+      unique_index: region_id
+      collect_stats: []
+    - name: segments
+      alias: s
+      sql: "SELECT customer_id, segment_id, segment_flag FROM segments"
+      join_type: "LEFT JOIN"
+      join_conditions: "s.customer_id = c.customer_id"
+      where_conditions: ""
+      unique_index: segment_id
+      collect_stats: []
+  conditions:
+    main:
+      BA:
+        - name: main_active_1
+          sql: "c.status = 'Active'"
+          description: "Customer status is Active"
+        - name: main_has_account_2
+          sql: "a.account_id IS NOT NULL"
+          description: "Has at least one account"
+      others:
+        global:
+          - name: main_region_north_3
+            sql: "r.region_type = 'North'"
+            description: "Region is North"
+          - name: main_segment_flagA_4
+            sql: "s.segment_flag = 'FlagA'"
+            description: "Segment flag A"
+    channels:
+      email:
+        BA:
+          - name: email_optin_5
+            sql: "c.status = 'Active'"
+            description: "Email opt-in"
+        others:
+          promo:
+            - name: email_promo1_6
+              sql: "s.segment_flag = 'Promo1'"
+              description: "Promo 1 segment"
+            - name: email_promo2_7
+              sql: "s.segment_flag = 'Promo2'"
+              description: "Promo 2 segment"
+      sms:
+        BA:
+          - name: sms_optin_8
+            sql: "a.acct_type = 'Savings'"
+            description: "SMS opt-in (Savings account)"
+        others:
+          tx:
+            - name: sms_high_tx_9
+              sql: "s.segment_flag = 'HighTx'"
+              description: "High transaction segment"
+            - name: sms_low_tx_10
+              sql: "s.segment_flag = 'LowTx'"
+              description: "Low transaction segment"
+      push:
+        BA: []
+        others:
+          promotions:
+            - name: push_promoA_11
+              sql: "s.segment_flag = 'PromoA'"
+              description: "Push Promo A"
+            - name: push_promoB_12
+              sql: "s.segment_flag = 'PromoB'"
+              description: "Push Promo B"
+
+waterfall:
+  output_directory: reports/poc/waterfall
+  count_columns:
+    - c.customer_id
+    - [c.customer_id, a.account_id]
+    - [r.region_id, s.segment_id]
+
+output:
+  channels:
+    email:
+      sql: |
+        SELECT
+          c.customer_id AS customer_id,
+          a.account_id AS account_id,
+          r.region_id AS region_id,
+          s.segment_id AS segment_id,
+          CASE WHEN email_optin_5 = 1 THEN 1 ELSE 0 END AS email_flag
+        FROM {eligibility_table} AS c
+        LEFT JOIN accounts AS a ON a.customer_id = c.customer_id
+        LEFT JOIN regions AS r ON r.customer_id = c.customer_id
+        LEFT JOIN segments AS s ON s.customer_id = c.customer_id
+        WHERE email_optin_5 = 1
+      file_location: reports/poc/email
+      file_base_name: email_list
+      output_options:
+        format: csv
+        additional_arguments: {}
+        custom_function: ""
+      unique_on:
+        - customer_id
+    sms:
+      sql: |
+        SELECT
+          c.customer_id AS customer_id,
+          a.account_id AS account_id,
+          r.region_id AS region_id,
+          s.segment_id AS segment_id,
+          CASE WHEN sms_optin_8 = 1 THEN 1 ELSE 0 END AS sms_flag
+        FROM {eligibility_table} AS c
+        LEFT JOIN accounts AS a ON a.customer_id = c.customer_id
+        LEFT JOIN regions AS r ON r.customer_id = c.customer_id
+        LEFT JOIN segments AS s ON s.customer_id = c.customer_id
+        WHERE sms_optin_8 = 1
+      file_location: reports/poc/sms
+      file_base_name: sms_list
+      output_options:
+        format: parquet
+        additional_arguments: {}
+        custom_function: ""
+      unique_on:
+        - customer_id
+    push:
+      sql: |
+        SELECT
+          c.customer_id AS customer_id,
+          a.account_id AS account_id,
+          r.region_id AS region_id,
+          s.segment_id AS segment_id,
+          CASE WHEN push_promoA_11 = 1 THEN 1 ELSE 0 END AS push_flag
+        FROM {eligibility_table} AS c
+        LEFT JOIN accounts AS a ON a.customer_id = c.customer_id
+        LEFT JOIN regions AS r ON r.customer_id = c.customer_id
+        LEFT JOIN segments AS s ON s.customer_id = c.customer_id
+        WHERE push_promoA_11 = 1
+      file_location: reports/poc/push
+      file_base_name: push_list
+      output_options:
+        format: xlsx
+        additional_arguments: {}
+        custom_function: ""
+      unique_on:
+        - customer_id

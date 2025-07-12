@@ -4,7 +4,7 @@ Output engine: exports final data to files with optional transforms.
 from tlptaco.config.schema import OutputConfig
 from tlptaco.db.runner import DBRunner
 from tlptaco.utils.logging import get_logger
-from tlptaco.io.writer import write_dataframe
+from tlptaco.iostream.writer import write_dataframe
 
 class OutputEngine:
     def __init__(self, cfg: OutputConfig, runner: DBRunner, logger=None):

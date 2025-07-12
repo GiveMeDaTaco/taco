@@ -5,7 +5,7 @@ from tlptaco.config.schema import WaterfallConfig, EligibilityConfig
 from tlptaco.db.runner import DBRunner
 from tlptaco.utils.logging import get_logger
 from tlptaco.sql.generator import SQLGenerator
-from tlptaco.io.writer import write_dataframe
+from tlptaco.iostream.writer import write_dataframe
 import os
 
 class WaterfallEngine:
@@ -48,15 +48,14 @@ class WaterfallEngine:
         """
         # Compute waterfall for each group of identifier columns
         elig_cfg = eligibility_engine.cfg  # type: EligibilityConfig
-        # Build grouping definitions
+        # Build grouping definitions (map config columns to eligibility table alias 'c')
         groups = []
         for item in self.cfg.count_columns:
-            if isinstance(item, str):
-                cols = [item]
-                grp_name = item.split('.')[-1]
-            else:
-                cols = item
-                grp_name = '_'.join([c.split('.')[-1] for c in cols])
+            raw_cols = [item] if isinstance(item, str) else list(item)
+            # Name for this grouping (concatenate base column names)
+            grp_name = '_'.join([col.split('.')[-1] for col in raw_cols])
+            # In waterfall CTE, always reference eligibility table alias 'c'
+            cols = [f"c.{col.split('.')[-1]}" for col in raw_cols]
             groups.append({'name': grp_name, 'cols': cols})
         # Precompute check column order
         check_cols = self._extract_check_columns(elig_cfg.conditions)
@@ -95,146 +94,60 @@ class WaterfallEngine:
         for grp in groups:
             name = grp['name']
             uniq_ids = grp['cols']
-            # Collect DataFrames for each section
-            df_sections = []
-            # 1) Base waterfall
-            ctx_base = {
-                'eligibility_table': elig_cfg.eligibility_table,
-                'unique_identifiers': uniq_ids,
-                'unique_without_aliases': [u.split('.')[-1] for u in uniq_ids],
-                'check_columns': base_checks,
-                'pre_filter': None
-            }
-            sql_base = gen.render('waterfall_full.sql.j2', ctx_base)
-            self.logger.info(f'Executing base waterfall SQL for grouping {name}')
-            df_base = self.runner.to_df(sql_base)
-            if 'stat_name' in df_base.columns:
-                df_base = (
-                    df_base.set_index('stat_name')
-                           .T
-                           .reset_index()
-                           .rename(columns={'index': 'check_name'})
-                )
-            df_base['section'] = 'base'
-            df_sections.append(df_base)
-            # 2) Per-channel waterfalls
-            for channel, tmpl_cfg in elig_cfg.conditions.channels.items():
-                # gather channel checks
-                chks = [chk.name for chk in tmpl_cfg.BA]
-                if tmpl_cfg.others:
-                    for lst in tmpl_cfg.others.values():
-                        for chk in lst:
-                            chks.append(chk.name)
-                # pre_filter: must pass all base checks
-                pf = ' AND '.join([f"c.{c}=1" for c in base_checks])
-                # prepare context for channel section
-                ctx_ch = {
+            self.logger.info(f"Starting waterfall grouping '{name}'")
+            try:
+                # Collect DataFrames for each section
+                df_sections = []
+                # 1) Base waterfall
+                ctx_base = {
                     'eligibility_table': elig_cfg.eligibility_table,
                     'unique_identifiers': uniq_ids,
                     'unique_without_aliases': [u.split('.')[-1] for u in uniq_ids],
-                    'check_columns': chks,
-                    'pre_filter': pf
+                    'check_columns': base_checks,
+                    'pre_filter': None
                 }
-                sql_ch = gen.render('waterfall_full.sql.j2', ctx_ch)
-                self.logger.info(f'Executing waterfall SQL for channel {channel}, grouping {name}')
-                df_ch = self.runner.to_df(sql_ch)
-                if 'stat_name' in df_ch.columns:
-                    df_ch = (
-                        df_ch.set_index('stat_name')
-                             .T
-                             .reset_index()
-                             .rename(columns={'index': 'check_name'})
-                    )
-                df_ch['section'] = channel
-                df_sections.append(df_ch)
-            # Concatenate all sections into a single DataFrame
-            result_df = pd.concat(df_sections, ignore_index=True)
-            # Replace check_name labels with the underlying SQL logic
-            if 'check_name' in result_df.columns:
-                result_df['check_name'] = result_df['check_name'].map(lambda nm: check_map.get(nm, nm))
-            # Override column names to full stat names, preserving order
-            full_parts = ['unique_drops', 'incremental_drops', 'remaining', 'cumulative_drops']
-            cols_new = ['check_name'] + full_parts + ['section']
-            if len(result_df.columns) == len(cols_new):
-                result_df.columns = cols_new
-            else:
-                self.logger.warning(
-                    f"Expected {len(cols_new)} columns but got {len(result_df.columns)}; skipping rename"
-                )
-            filename = f"waterfall_{elig_cfg.eligibility_table}_{name}.xlsx"
-            out_path = os.path.join(out_dir, filename)
-            # Write styled Excel waterfall report
-            try:
-                import pandas as pd
-                from openpyxl.styles import PatternFill, Font
-                with pd.ExcelWriter(out_path, engine='openpyxl') as writer:
-                    result_df.to_excel(writer, index=False, sheet_name='Waterfall')
-                    ws = writer.sheets['Waterfall']
-                    # Ensure full header names
-                    headers = list(result_df.columns)
-                    for col_idx, name in enumerate(headers, start=1):
-                        ws.cell(row=1, column=col_idx).value = name
-                    # Style header row
-                    hdr_fill = PatternFill(fill_type='solid', fgColor='FFD700')
-                    for cell in ws[1]:
-                        cell.font = Font(bold=True)
-                        cell.fill = hdr_fill
-                    # Freeze header
-                    ws.freeze_panes = 'A2'
-                    # Color sections differently
-                    sec_col = result_df.columns.get_loc('section') + 1
-                    for idx, sec in enumerate(result_df['section'], start=2):
-                        if sec == 'base':
-                            fill = PatternFill(fill_type='solid', fgColor='DDDDDD')
-                        elif sec == 'email':
-                            fill = PatternFill(fill_type='solid', fgColor='CCFFFF')
-                        elif sec == 'sms':
-                            fill = PatternFill(fill_type='solid', fgColor='CCFFCC')
-                        else:
-                            fill = None
-                        if fill:
-                            for col in range(1, len(result_df.columns)+1):
-                                ws.cell(row=idx, column=col).fill = fill
-                # After styling, insert table definitions below the data
-                try:
-                    rows, cols = result_df.shape
-                    # Determine start row for table metadata (header + data + one blank)
-                    start_row = rows + 3
-                    # Header for tables section
-                    ws.cell(row=start_row, column=1).value = 'Source Tables:'
-                    from openpyxl.styles import Font
-                    ws.cell(row=start_row, column=1).font = Font(bold=True)
-                    # Write each table's FROM/JOIN clause
-                    for i, tbl in enumerate(elig_cfg.tables, start=1):
-                        if i == 1:
-                            text = f"FROM {tbl.name} {tbl.alias}"
-                            if tbl.where_conditions:
-                                text += f" WHERE {tbl.where_conditions}"
-                        else:
-                            jt = tbl.join_type or 'JOIN'
-                            text = f"{jt} {tbl.name} {tbl.alias}"
-                            if tbl.join_conditions:
-                                text += f" ON {tbl.join_conditions}"
-                            if tbl.where_conditions:
-                                text += f" WHERE {tbl.where_conditions}"
-                        ws.cell(row=start_row + i, column=1).value = text
-                except Exception:
-                    pass
-                # Log file write with row/column counts
-                try:
-                    rows, cols = result_df.shape
-                    self.logger.info(f'Waterfall report saved to {out_path} ({rows} rows, {cols} columns)')
-                except Exception:
-                    self.logger.info(f'Waterfall report saved to {out_path}')
-            except Exception as e:
-                self.logger.warning(f'Excel styling failed ({e}), writing plain file')
+                df_base = self.runner.to_df(gen.render('waterfall_full.sql.j2', ctx_base))
+                # Normalize column names to lowercase for consistent pivoting
+                df_base.columns = [c.lower() for c in df_base.columns]
+                # Pivot base metrics if stat_name column present
+                if 'stat_name' in df_base.columns:
+                    df_base = df_base.set_index('stat_name').T.reset_index().rename(columns={'index': 'check_name'})
+                df_base['section'] = 'base'
+                df_sections.append(df_base)
+                # 2) Per-channel waterfalls
+                for channel, tmpl_cfg in elig_cfg.conditions.channels.items():
+                    chks = [chk.name for chk in tmpl_cfg.BA] + [c.name for lst in (tmpl_cfg.others or {}).values() for c in lst]
+                    pf = ' AND '.join([f"c.{c}=1" for c in base_checks])
+                    df_ch = self.runner.to_df(gen.render('waterfall_full.sql.j2', {
+                        'eligibility_table': elig_cfg.eligibility_table,
+                        'unique_identifiers': uniq_ids,
+                        'unique_without_aliases': [u.split('.')[-1] for u in uniq_ids],
+                        'check_columns': chks,
+                        'pre_filter': pf
+                    }))
+                    # Normalize column names to lowercase and pivot channel metrics
+                    df_ch.columns = [c.lower() for c in df_ch.columns]
+                    if 'stat_name' in df_ch.columns:
+                        df_ch = df_ch.set_index('stat_name').T.reset_index().rename(columns={'index': 'check_name'})
+                    df_ch['section'] = channel
+                    df_sections.append(df_ch)
+                # Concatenate sections and map check_name to SQL
+                result_df = pd.concat(df_sections, ignore_index=True)
+                if 'check_name' in result_df.columns:
+                    result_df['check_name'] = result_df['check_name'].map(lambda nm: check_map.get(nm, nm))
+                cols_new = ['check_name', 'unique_drops', 'incremental_drops', 'remaining', 'cumulative_drops', 'section']
+                if len(result_df.columns) == len(cols_new):
+                    result_df.columns = cols_new
+                else:
+                    self.logger.warning(f"Expected {len(cols_new)} columns but got {len(result_df.columns)}; skipping rename")
+                # Write report
+                out_path = os.path.join(out_dir, f"waterfall_{elig_cfg.eligibility_table}_{name}.xlsx")
                 write_dataframe(result_df, out_path, fmt='excel')
-                # Log plain write with counts
-                try:
-                    rows, cols = result_df.shape
-                    self.logger.info(f'Waterfall report (plain) saved to {out_path} ({rows} rows, {cols} columns)')
-                except Exception:
-                    self.logger.info(f'Waterfall report (plain) saved to {out_path}')
-            # Update progress bar for this grouping
-            if progress:
-                progress.update("Waterfall")
+                rows, cols = result_df.shape
+                self.logger.info(f'Waterfall report saved to {out_path} ({rows} rows, {cols} columns)')
+            except Exception:
+                self.logger.exception(f"Waterfall grouping '{name}' failed")
+            finally:
+                if progress:
+                    progress.update('Waterfall')
+                self.logger.info(f"Finished waterfall grouping '{name}'")

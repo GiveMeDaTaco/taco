@@ -833,3 +833,7 @@ LEFT JOIN sales AS s ON s.customer_id = c.customer_id
 2025-07-10 19:23:24,915 root INFO: Fetched 2 rows for channel sms
 2025-07-10 19:23:24,915 root INFO: Writing output file for channel sms to reports/sms/sms_list.parquet
 2025-07-10 19:23:24,920 root INFO: Cleaning up DB connection
+ℹ️ [13:41:14] root INFO: Fetching data to DataFrame:
+ℹ️ [13:41:14] root INFO: SELECT 1 AS test;
+ℹ️ [13:41:14] root INFO: Fetched DataFrame with 1 rows and 1 columns in 0.55s
+ℹ️ [13:41:14] root INFO: Cleaning up DB connection

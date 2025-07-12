@@ -17,8 +17,8 @@ class DBRunner:
         Execute a SQL statement, log the SQL text and timing, and return the cursor.
         """
         start = time.time()
-        self.logger.info("Executing SQL:")
-        self.logger.info(sql)
+        self.logger.info("Executing SQL statement")
+        self.logger.debug(sql)
         cur = self.conn.execute(sql)
         duration = time.time() - start
         self.logger.info(f"SQL execution finished in {duration:.2f}s")
@@ -35,8 +35,8 @@ class DBRunner:
         Execute a SQL query and return a pandas DataFrame, logging SQL text, timing, and shape.
         """
         start = time.time()
-        self.logger.info("Fetching data to DataFrame:")
-        self.logger.info(sql)
+        self.logger.info("Fetching data to DataFrame")
+        self.logger.debug(sql)
         df = self.conn.to_df(sql)
         duration = time.time() - start
         try:
