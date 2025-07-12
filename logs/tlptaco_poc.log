@@ -3465,3 +3465,20 @@ FROM flags;': [Version 20.0.0.32] [Session 1161] [Teradata Database] [Error 3807
 ℹ️ [21:38:44] root INFO: Fetched DataFrame with 4 rows and 3 columns in 0.23s
 ℹ️ [21:38:44] root INFO: Waterfall report saved to reports/poc/waterfall/waterfall_eligibility_poc_region_id_segment_id.xlsx (12 rows, 6 columns)
 ℹ️ [21:38:44] root INFO: Finished waterfall grouping 'region_id_segment_id'
+ℹ️ [12:06:53] root INFO: Dropping existing table eligibility_poc
+ℹ️ [12:06:53] root INFO: Executing SQL statement
+ℹ️ [12:07:04] root INFO: No existing eligibility table to drop
+ℹ️ [12:07:04] root INFO: Executing eligibility SQL statement
+ℹ️ [12:07:04] root INFO: Executing SQL statement
+ℹ️ [12:11:10] root INFO: Dropping existing table eligibility_poc
+ℹ️ [12:11:10] root INFO: Executing SQL statement
+ℹ️ [12:11:11] root INFO: SQL execution finished in 0.76s
+ℹ️ [12:11:11] root INFO: Executing eligibility SQL statement
+ℹ️ [12:11:11] root INFO: Executing SQL statement
+ℹ️ [12:11:12] root INFO: SQL execution finished in 0.49s
+ℹ️ [12:11:12] root INFO: Executing eligibility SQL statement
+ℹ️ [12:11:12] root INFO: Executing SQL statement
+ℹ️ [12:11:12] root INFO: SQL execution finished in 0.04s
+ℹ️ [12:11:12] root INFO: Executing eligibility SQL statement
+ℹ️ [12:11:12] root INFO: Executing SQL statement
+ℹ️ [12:11:12] root INFO: SQL execution finished in 0.04s

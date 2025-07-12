@@ -65,6 +65,7 @@ class WaterfallEngine:
         # Ensure output directory exists
         out_dir = self.cfg.output_directory
         os.makedirs(out_dir, exist_ok=True)
+
         import pandas as pd
         # Build list of base checks
         base_checks = [chk.name for chk in elig_cfg.conditions.main.BA]

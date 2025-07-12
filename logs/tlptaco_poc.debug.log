@@ -13030,3 +13030,94 @@ FROM flags;
 ℹ️ [21:38:44] root INFO: Fetched DataFrame with 4 rows and 3 columns in 0.23s
 ℹ️ [21:38:44] root INFO: Waterfall report saved to reports/poc/waterfall/waterfall_eligibility_poc_region_id_segment_id.xlsx (12 rows, 6 columns)
 ℹ️ [21:38:44] root INFO: Finished waterfall grouping 'region_id_segment_id'
+ℹ️ [12:06:53] root INFO: Dropping existing table eligibility_poc
+ℹ️ [12:06:53] root INFO: Executing SQL statement
+🐛 [12:06:53] root DEBUG: DROP TABLE eligibility_poc;
+ℹ️ [12:07:04] root INFO: No existing eligibility table to drop
+ℹ️ [12:07:04] root INFO: Executing eligibility SQL statement
+ℹ️ [12:07:04] root INFO: Executing SQL statement
+🐛 [12:07:04] root DEBUG: -- Jinja2 template for eligibility SQL
+-- Context:
+--   eligibility_table: name of final eligibility table
+--   unique_identifiers: list of identifiers with alias (e.g. ['a.col', 'b.col'])
+--   unique_without_aliases: list of column names only (e.g. ['col'])
+--   checks: list of dicts {name: column_name, sql: expression}
+--   tables: list of dicts {name, alias, join_type, join_conditions}
+--   where_clauses: list of strings
+CREATE TABLE eligibility_poc AS (
+    SELECT
+        c.customer_id,
+        a.account_id,
+        r.region_id,
+        s.segment_id,
+        CASE WHEN c.status = 'Active' THEN 1 ELSE 0 END AS main_active_1,
+        CASE WHEN a.account_id IS NOT NULL THEN 1 ELSE 0 END AS main_has_account_2,
+        CASE WHEN r.region_type = 'North' THEN 1 ELSE 0 END AS main_region_north_3,
+        CASE WHEN s.segment_flag = 'FlagA' THEN 1 ELSE 0 END AS main_segment_flagA_4,
+        CASE WHEN c.status = 'Active' THEN 1 ELSE 0 END AS email_optin_5,
+        CASE WHEN s.segment_flag = 'Promo1' THEN 1 ELSE 0 END AS email_promo1_6,
+        CASE WHEN s.segment_flag = 'Promo2' THEN 1 ELSE 0 END AS email_promo2_7,
+        CASE WHEN a.acct_type = 'Savings' THEN 1 ELSE 0 END AS sms_optin_8,
+        CASE WHEN s.segment_flag = 'HighTx' THEN 1 ELSE 0 END AS sms_high_tx_9,
+        CASE WHEN s.segment_flag = 'LowTx' THEN 1 ELSE 0 END AS sms_low_tx_10,
+        CASE WHEN s.segment_flag = 'PromoA' THEN 1 ELSE 0 END AS push_promoA_11,
+        CASE WHEN s.segment_flag = 'PromoB' THEN 1 ELSE 0 END AS push_promoB_12
+    FROM customers c
+      LEFT JOIN accounts a
+        ON a.customer_id = c.customer_id
+      LEFT JOIN regions r
+        ON r.customer_id = c.customer_id
+      LEFT JOIN segments s
+        ON s.customer_id = c.customer_id
+ ) WITH DATA PRIMARY INDEX (customer_id, account_id, region_id, segment_id)
+ℹ️ [12:11:10] root INFO: Dropping existing table eligibility_poc
+ℹ️ [12:11:10] root INFO: Executing SQL statement
+🐛 [12:11:10] root DEBUG: DROP TABLE eligibility_poc;
+ℹ️ [12:11:11] root INFO: SQL execution finished in 0.76s
+ℹ️ [12:11:11] root INFO: Executing eligibility SQL statement
+ℹ️ [12:11:11] root INFO: Executing SQL statement
+🐛 [12:11:11] root DEBUG: -- Jinja2 template for eligibility SQL
+-- Context:
+--   eligibility_table: name of final eligibility table
+--   unique_identifiers: list of identifiers with alias (e.g. ['a.col', 'b.col'])
+--   unique_without_aliases: list of column names only (e.g. ['col'])
+--   checks: list of dicts {name: column_name, sql: expression}
+--   tables: list of dicts {name, alias, join_type, join_conditions}
+--   where_clauses: list of strings
+CREATE TABLE eligibility_poc AS (
+    SELECT
+        c.customer_id,
+        a.account_id,
+        r.region_id,
+        s.segment_id,
+        CASE WHEN c.status = 'Active' THEN 1 ELSE 0 END AS main_active_1,
+        CASE WHEN a.account_id IS NOT NULL THEN 1 ELSE 0 END AS main_has_account_2,
+        CASE WHEN r.region_type = 'North' THEN 1 ELSE 0 END AS main_region_north_3,
+        CASE WHEN s.segment_flag = 'FlagA' THEN 1 ELSE 0 END AS main_segment_flagA_4,
+        CASE WHEN c.status = 'Active' THEN 1 ELSE 0 END AS email_optin_5,
+        CASE WHEN s.segment_flag = 'Promo1' THEN 1 ELSE 0 END AS email_promo1_6,
+        CASE WHEN s.segment_flag = 'Promo2' THEN 1 ELSE 0 END AS email_promo2_7,
+        CASE WHEN a.acct_type = 'Savings' THEN 1 ELSE 0 END AS sms_optin_8,
+        CASE WHEN s.segment_flag = 'HighTx' THEN 1 ELSE 0 END AS sms_high_tx_9,
+        CASE WHEN s.segment_flag = 'LowTx' THEN 1 ELSE 0 END AS sms_low_tx_10,
+        CASE WHEN s.segment_flag = 'PromoA' THEN 1 ELSE 0 END AS push_promoA_11,
+        CASE WHEN s.segment_flag = 'PromoB' THEN 1 ELSE 0 END AS push_promoB_12
+    FROM customers c
+      LEFT JOIN accounts a
+        ON a.customer_id = c.customer_id
+      LEFT JOIN regions r
+        ON r.customer_id = c.customer_id
+      LEFT JOIN segments s
+        ON s.customer_id = c.customer_id
+ ) WITH DATA PRIMARY INDEX (customer_id, account_id, region_id, segment_id)
+ℹ️ [12:11:12] root INFO: SQL execution finished in 0.49s
+ℹ️ [12:11:12] root INFO: Executing eligibility SQL statement
+ℹ️ [12:11:12] root INFO: Executing SQL statement
+🐛 [12:11:12] root DEBUG: -- Collect statistics on the new table
+-- Collect statistics on the new table (disabled for testing)
+-- COLLECT STATISTICS INDEX prindx ON eligibility_poc
+ℹ️ [12:11:12] root INFO: SQL execution finished in 0.04s
+ℹ️ [12:11:12] root INFO: Executing eligibility SQL statement
+ℹ️ [12:11:12] root INFO: Executing SQL statement
+🐛 [12:11:12] root DEBUG: -- COLLECT STATISTICS COLUMN (main_active_1, main_has_account_2, main_region_north_3, main_segment_flagA_4, email_optin_5, email_promo1_6, email_promo2_7, sms_optin_8, sms_high_tx_9, sms_low_tx_10, push_promoA_11, push_promoB_12) ON eligibility_poc
+ℹ️ [12:11:12] root INFO: SQL execution finished in 0.04s
