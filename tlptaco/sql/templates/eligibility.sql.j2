@@ -55,27 +55,3 @@ flags AS (
     {% for col in segment.checks %}{{ col }}{{ "," if not loop.last }}{% endfor %}
   FROM current_segment_population
 )
-
--- This is the standard waterfall calculation block, reused here.
--- It will now correctly report on the filtered population for this segment.
-{%- for part in ['unique_drops', 'incremental_drops', 'remaining', 'cumulative_drops'] %}
-SELECT
-  '{{ segment.name }}' AS section,
-  '{{ part }}' AS stat_name,
-  {%- for col in segment.checks %}
-    {%- if part == 'unique_drops' %} SUM(CASE WHEN {{ col }} = 0 THEN 1 ELSE 0 END)
-    {%- elif part == 'incremental_drops' %} SUM(CASE WHEN {{ col }} = 0 {%- for prev in segment.checks[:loop.index0] %} AND {{ prev }} = 1{%- endfor %} THEN 1 ELSE 0 END)
-    {%- elif part == 'remaining' %} SUM(CASE WHEN {{ col }} = 1 {%- for prev in segment.checks[:loop.index0] %} AND {{ prev }} = 1{%- endfor %} THEN 1 ELSE 0 END)
-    {%- elif part == 'cumulative_drops' %} COUNT(*) - SUM(CASE WHEN {{ col }} = 1 {%- for prev in segment.checks[:loop.index0] %} AND {{ prev }} = 1{%- endfor %} THEN 1 ELSE 0 END)
-    {%- endif %} AS {{ col }}{{ "," if not loop.last }}
-  {%- endfor %}
-FROM flags
-{%- if not loop.last %}
-UNION ALL
-{% endif %}
-{%- endfor %}
-
-{%- if not loop.last %}
-UNION ALL
-{% endif %}
-{%- endfor %};
