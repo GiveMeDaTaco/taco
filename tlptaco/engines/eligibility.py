@@ -31,14 +31,18 @@ class EligibilityEngine:
             if t.where_conditions:
                 where_clauses.append(t.where_conditions)
 
+        # Build template context
         context = {
             'eligibility_table': cfg.eligibility_table,
             'unique_identifiers': cfg.unique_identifiers,
             'unique_without_aliases': [u.split('.')[-1] for u in cfg.unique_identifiers],
             'tables': tables,
             'where_clauses': where_clauses,
-            # Pass the entire nested conditions object to the template
-            'conditions': cfg.conditions
+            # Main eligibility checks
+            'checks': [
+                {'name': chk.name, 'sql': chk.sql}
+                for chk in cfg.conditions.main.BA
+            ],
         }
 
         try:

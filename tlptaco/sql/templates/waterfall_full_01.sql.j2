@@ -1,0 +1,10 @@
+-- Master full-waterfall CTE + UNION logic
+-- Context:
+--   eligibility_table, unique_identifiers, check_columns, pre_filter
+WITH waterfall_base AS (
+  SELECT * FROM {{ eligibility_table }} AS c
+  {% if pre_filter %}WHERE {{ pre_filter }}{% endif %}
+)
+SELECT * FROM waterfall_base
+UNION ALL
+-- (subsequent UNION blocks go here)

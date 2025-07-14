@@ -16,13 +16,16 @@ class DBConnection:
 
     def connect(self):
         # Establish a direct teradatasql (DB-API) connection
+        # Build connection arguments
         conn_kwargs = {
             'host': self.host,
             'user': self.user,
             'password': self.password,
         }
-        # logmech is not passed; teradatasql uses default authentication mechanism
-        # TODO add KRB5 authentication mechanism
+        # Include logmech if explicitly set (None = omit)
+        if self.logmech is not None:
+            conn_kwargs['logmech'] = self.logmech
+        # Establish a direct teradatasql (DB-API) connection
         self.conn = teradatasql.connect(**conn_kwargs)
 
     def disconnect(self):

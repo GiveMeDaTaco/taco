@@ -1,0 +1,92 @@
+-- New Template: waterfall_segments.sql.j2
+-- Purpose: Handles the "Claim and Exclude" logic for a series of non-BA segments.
+--
+-- Context:
+--   eligibility_table:      Name of the smart eligibility table.
+--   unique_identifiers:     List of unique ID columns.
+--   pre_filter:             The base WHERE clause (e.g., passed all main and channel BA).
+--   segments:               A list of segment objects. Each object must contain:
+--                             - name: The name of the segment (e.g., 'SegmentA')
+--                             - checks: A list of the individual check column names.
+--                             - summary_column: The name of the 'passed_all' column for this segment.
+--
+
+-- Define the base population for this entire multi-segment analysis
+WITH base_population AS (
+    SELECT *
+    FROM {{ eligibility_table }} AS c
+    {% if pre_filter %}WHERE {{ pre_filter }}{% endif %}
+)
+
+{% for segment in segments %}
+-- For each segment, we run two distinct calculations: the "Claimed" count and the detailed waterfall.
+
+-- Calculation 1: Count records "Claimed" by this segment.
+-- The population for this is anyone in the base population who has NOT been claimed by a previous segment.
+SELECT
+    '{{ segment.name }}' AS section,
+    'Records Claimed' AS stat_name,
+    COUNT(*) AS metric_value
+FROM base_population
+WHERE {{ segment.summary_column }} = 1
+  {% for prev_segment in segments[:loop.index0] %}
+    AND {{ prev_segment.summary_column }} = 0
+  {%- endfor %}
+
+UNION ALL
+
+-- Calculation 2: Perform a detailed failure analysis for this segment.
+-- The CTE below defines the correct sub-population for this segment's waterfall.
+-- It includes ONLY records not claimed by a previous segment.
+WITH current_segment_population AS (
+    SELECT *
+    FROM base_population
+    {% if loop.index0 > 0 %}
+    WHERE {% for prev_segment in segments[:loop.index0] %}
+        {{ prev_segment.summary_column }} = 0
+        {{ "AND " if not loop.last }}
+    {%- endfor %}
+    {% endif %}
+),
+-- The flags CTE is standard, but operates on our filtered population
+flags AS (
+  SELECT
+    {% for uid in unique_identifiers %}{{ uid.split('.')[-1] }}{{ "," if not loop.last }}{%- endfor %},
+    {% for col in segment.checks %}{{ col }}{{ "," if not loop.last }}{% endfor %}
+  FROM current_segment_population
+)
+-- This is the standard waterfall calculation block, reused here.
+SELECT
+  '{{ segment.name }}' AS section,
+  stat_name,
+  check_name,
+  value
+FROM (
+    {%- for part in ['unique_drops', 'incremental_drops', 'remaining', 'cumulative_drops'] %}
+    SELECT
+      '{{ part }}' AS stat_name,
+      check_name,
+      value
+    FROM (
+        {% for col in segment.checks %}
+        SELECT
+          '{{ col }}' as check_name,
+          {%- if part == 'unique_drops' %} SUM(CASE WHEN {{ col }} = 0 THEN 1 ELSE 0 END)
+          {%- elif part == 'incremental_drops' %} SUM(CASE WHEN {{ col }} = 0 {%- for prev in segment.checks[:loop.index0] %} AND {{ prev }} = 1{%- endfor %} THEN 1 ELSE 0 END)
+          {%- elif part == 'remaining' %} SUM(CASE WHEN {{ col }} = 1 {%- for prev in segment.checks[:loop.index0] %} AND {{ prev }} = 1{%- endfor %} THEN 1 ELSE 0 END)
+          {%- elif part == 'cumulative_drops' %} COUNT(*) - SUM(CASE WHEN {{ col }} = 1 {%- for prev in segment.checks[:loop.index0] %} AND {{ prev }} = 1{%- endfor %} THEN 1 ELSE 0 END)
+          {%- endif %} AS value
+        FROM flags
+        {% if not loop.last %}UNION ALL{% endif %}
+        {% endfor %}
+    ) q
+    {%- if not loop.last %}
+    UNION ALL
+    {% endif %}
+    {%- endfor %}
+) metrics
+
+{%- if not loop.last %}
+UNION ALL
+{% endif %}
+{%- endfor %};

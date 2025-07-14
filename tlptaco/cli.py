@@ -13,14 +13,26 @@ from tlptaco.utils.logging import configure_logging
 
 def main():
     parser = argparse.ArgumentParser(description="tlptaco v2: Eligibility → Waterfall → Output pipeline")
+    import os
     parser.add_argument("--config", "-c", required=True, help="Path to configuration YAML/JSON file")
+    parser.add_argument("--output-dir", "-o", default=None,
+                        help="Directory to write outputs and logs (defaults to current working directory)")
     parser.add_argument("--mode", "-m", choices=["full", "presizing"], default="full",
                         help="Run mode: full (includes output) or presizing (eligibility+waterfall only)")
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose (DEBUG) console output")
     parser.add_argument("--progress", "-p", action="store_true", help="Show progress bars for pipeline stages (requires rich)")
     args = parser.parse_args()
 
+    # Determine working directory for outputs/logs
+    workdir = os.path.abspath(args.output_dir) if args.output_dir else os.getcwd()
+    os.makedirs(os.path.join(workdir, 'logs'), exist_ok=True)
+    # Load configuration
     config = load_config(args.config)
+    # Override logging paths to use workdir if not explicitly set
+    if not config.logging.file:
+        config.logging.file = os.path.join(workdir, 'logs', 'tlptaco.log')
+    if not config.logging.debug_file:
+        config.logging.debug_file = os.path.join(workdir, 'logs', 'tlptaco.debug.log')
     logger = configure_logging(config.logging, verbose=args.verbose)
     runner = DBRunner(config.database, logger)
 

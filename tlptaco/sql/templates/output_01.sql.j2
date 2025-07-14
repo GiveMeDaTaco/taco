@@ -1,0 +1,8 @@
+-- Master per-channel output SELECT
+-- Context:
+--   eligibility_table, columns, unique_on, cases
+SELECT
+  {% for col in columns %}{{ col }}{{ "," if not loop.last }}{% endfor %}
+FROM {{ eligibility_table }} AS c
+WHERE ({{ cases[0].condition }})
+-- (additional CASE blocks or filters go here)

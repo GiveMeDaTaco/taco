@@ -1,15 +1,16 @@
 """
 Pydantic models for tlptaco configuration with built-in validation.
 """
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, model_validator, field_validator
 from typing import List, Dict, Optional, Any, Union
+import re
 
 # --- Base Models ---
 
 class ConditionCheck(BaseModel):
     name: str
     sql: str
-    description: Optional[str]
+    description: Optional[str] = None
 
 class TemplateConditions(BaseModel):
     BA: List[ConditionCheck]
@@ -28,6 +29,14 @@ class TableConfig(BaseModel):
     where_conditions: Optional[str]
     unique_index: Optional[str]
     collect_stats: Optional[List[str]]
+    # Ensure alias is a valid identifier (starts with letter/_ and contains only alphanumeric/_)
+    @field_validator('alias', mode='before')
+    def validate_alias(cls, v):  # type: ignore[name-defined]
+        if not isinstance(v, str) or not re.match(r'^[A-Za-z_][A-Za-z0-9_]*$', v):
+            raise ValueError(
+                f"Invalid alias '{v}'. Must start with a letter or underscore and contain only alphanumeric characters or underscores."
+            )
+        return v
 
 class OutputOptions(BaseModel):
     format: str
@@ -54,6 +63,16 @@ class EligibilityConfig(BaseModel):
                         f"Valid aliases are: {valid_aliases}"
                     )
         return self
+    # Validate eligibility_table naming: identifier or schema.table
+    @field_validator('eligibility_table', mode='before')
+    def validate_eligibility_table(cls, v):  # type: ignore[name-defined]
+        if not isinstance(v, str) or not re.match(
+            r'^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$', v
+        ):
+            raise ValueError(
+                f"Invalid eligibility_table '{v}'. Must be a valid identifier or schema.table."
+            )
+        return v
 
 class WaterfallConfig(BaseModel):
     output_directory: str
