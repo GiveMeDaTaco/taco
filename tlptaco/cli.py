@@ -47,17 +47,17 @@ def main():
         from tlptaco.utils.loading_bar import ProgressManager
         # Determine steps for each stage
         elig_steps = eligibility_engine.num_steps()
-        wf_steps = waterfall_engine.num_steps()
+        wf_steps = waterfall_engine.num_steps(eligibility_engine)
         layers = [("Eligibility", elig_steps), ("Waterfall", wf_steps)]
         if args.mode == "full":
-            out_steps = output_engine.num_steps()
+            out_steps = output_engine.num_steps(eligibility_engine)
             layers.append(("Output", out_steps))
         # Run with progress bars
         with ProgressManager(layers, units="steps") as pm:
             eligibility_engine.run(progress=pm)
-            waterfall_engine.run(eligibility_engine, progress=pm)
+            waterfall_engine.run(progress=pm)
             if args.mode == "full":
-                output_engine.run(eligibility_engine, progress=pm)
+                output_engine.run(progress=pm)
     else:
         # Run without progress bars
         eligibility_engine.run()

@@ -1,13 +1,13 @@
 logging:
   level: INFO
-  file: logs/tlptaco_poc.log
-  debug_file: logs/tlptaco_poc.debug.log
+  file: ../logs/tlptaco_poc.log
+  debug_file: ../logs/tlptaco_poc.debug.log
 
 database:
-  host: testwf2-ogei3aaf70dllgfc.env.clearscape.teradata.com
+  host: testwf-ogei3aaf70dllgfc.env.clearscape.teradata.com
   user: demo_user
   password: BeStrong
-  logmech: TD2
+  logmech: LDAP
 
 eligibility:
   eligibility_table: eligibility_poc
@@ -127,10 +127,10 @@ output:
   channels:
     email:
       columns:
-        - customer_id
-        - account_id
-        - region_id
-        - segment_id
+        - c.customer_id AS customer_id
+        - a.account_id AS account_id
+        - r.region_id AS region_id
+        - s.segment_id AS segment_id
       file_location: reports/poc/email
       file_base_name: email_list
       output_options:
@@ -141,10 +141,10 @@ output:
         - customer_id
     sms:
       columns:
-        - customer_id
-        - account_id
-        - region_id
-        - segment_id
+        - c.customer_id AS customer_id
+        - a.account_id AS account_id
+        - r.region_id AS region_id
+        - s.segment_id AS segment_id
       file_location: reports/poc/sms
       file_base_name: sms_list
       output_options:
@@ -155,10 +155,10 @@ output:
         - customer_id
     push:
       columns:
-        - customer_id
-        - account_id
-        - region_id
-        - segment_id
+        - c.customer_id AS customer_id
+        - a.account_id AS account_id
+        - r.region_id AS region_id
+        - s.segment_id AS segment_id
       file_location: reports/poc/push
       file_base_name: push_list
       output_options:

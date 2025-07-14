@@ -29,8 +29,6 @@ WHERE
 {{ wc }}{{ " AND" if not loop.last }}
 {%- endfor %}
 {%- endif %}
-) WITH DATA PRIMARY INDEX ({{ unique_without_aliases|join(', ') }});
-
--- Collect statistics on the new table (disabled for testing)
--- COLLECT STATISTICS INDEX prindx ON {{ eligibility_table }};
--- COLLECT STATISTICS COLUMN ({{ checks|map(attribute='name')|join(', ') }}) ON {{ eligibility_table }};
+) WITH DATA PRIMARY INDEX prindx ({{ unique_without_aliases|join(', ') }});
+COLLECT STATISTICS INDEX prindx ON {{ eligibility_table }};
+COLLECT STATISTICS COLUMN ({{ checks|map(attribute='name')|join(', ') }}) ON {{ eligibility_table }};
