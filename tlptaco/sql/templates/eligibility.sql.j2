@@ -30,5 +30,6 @@ WHERE
 {%- endfor %}
 {%- endif %}
 ) WITH DATA PRIMARY INDEX prindx ({{ unique_without_aliases|join(', ') }});
+
+-- MODIFIED: Collect stats only on the primary index for robustness.
 COLLECT STATISTICS INDEX prindx ON {{ eligibility_table }};
-COLLECT STATISTICS COLUMN ({{ checks|map(attribute='name')|join(', ') }}) ON {{ eligibility_table }};

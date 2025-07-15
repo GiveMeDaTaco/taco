@@ -12,7 +12,7 @@ SELECT
     template_id
 FROM (
     SELECT
-        *,
+        c.*,
         -- This CASE statement is the core of the "Claim and Exclude" logic.
         -- Because it stops at the first WHEN that is true, the order of the 'cases'
         -- passed from Python enforces the mutual exclusivity.

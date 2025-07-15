@@ -23,7 +23,6 @@ class WaterfallEngine:
         Prepares all the groups and SQL generation steps without executing them.
         The results are cached to avoid redundant work.
         """
-        # Cache the eligibility engine instance for potential use in the run() method
         self._eligibility_engine = eligibility_engine
 
         if self._waterfall_groups is not None:
@@ -45,6 +44,13 @@ class WaterfallEngine:
         templates_dir = os.path.join(os.path.dirname(__file__), '..', 'sql', 'templates')
         gen = SQLGenerator(templates_dir)
 
+        def create_sql_condition(check_list):
+            """Helper function to create a combined SQL AND condition from a list of checks."""
+            if not check_list:
+                return "1=1"  # A condition that is always true
+            conditions = [f"c.{check.name} = 1" for check in check_list]
+            return f"({' AND '.join(conditions)})"
+
         # 2. For each group, prepare the SQL and metadata for each report section
         for grp in groups:
             name, uniq_ids = grp['name'], grp['cols']
@@ -59,22 +65,38 @@ class WaterfallEngine:
 
             # --- SECTION 2: PER-CHANNEL WATERFALLS ---
             for channel_name, channel_cfg in elig_cfg.conditions.channels.items():
-                base_filter = "c.passed_all_main_BA = 1"
-                channel_ba_checks = [chk.name for chk in channel_cfg.BA]
+                # Dynamically create the base filter for records that passed all main BA checks
+                base_filter = create_sql_condition(elig_cfg.conditions.main.BA)
+
+                # Create the waterfall for the channel's specific BA checks
+                channel_ba_checks_list = channel_cfg.BA
+                channel_ba_check_names = [chk.name for chk in channel_ba_checks_list]
                 ctx_chan_ba = {'eligibility_table': elig_cfg.eligibility_table, 'unique_identifiers': uniq_ids,
-                               'check_columns': channel_ba_checks, 'pre_filter': base_filter}
+                               'check_columns': channel_ba_check_names, 'pre_filter': base_filter}
                 sql_chan_ba = gen.render('waterfall_full.sql.j2', ctx_chan_ba)
                 sql_jobs.append({'type': 'standard', 'sql': sql_chan_ba, 'section_name': f'{channel_name} - BA'})
 
                 if channel_cfg.others:
-                    segment_base_filter = f"{base_filter} AND c.passed_all_{channel_name}_BA = 1"
-                    segments_to_process = [{'name': f'{channel_name} - {s_name}', 'checks': [c.name for c in s_checks],
-                                            'summary_column': f'passed_all_{channel_name}_{s_name}'} for
-                                           s_name, s_checks in sorted(channel_cfg.others.items())]
+                    # Create the next level filter for records that also passed the channel's BA checks
+                    channel_ba_condition = create_sql_condition(channel_ba_checks_list)
+                    segment_base_filter = f"{base_filter} AND {channel_ba_condition}"
+
+                    # Prepare the segments, building their pass/fail conditions dynamically
+                    segments_to_process = []
+                    for s_name, s_checks in sorted(channel_cfg.others.items()):
+                        segment_condition = create_sql_condition(s_checks)
+                        segments_to_process.append({
+                            'name': f'{channel_name} - {s_name}',
+                            'checks': [c.name for c in s_checks],
+                            # We reuse 'summary_column' but pass the full condition string into the template
+                            'summary_column': segment_condition
+                        })
+
                     ctx_segments = {'eligibility_table': elig_cfg.eligibility_table, 'unique_identifiers': uniq_ids,
                                     'pre_filter': segment_base_filter, 'segments': segments_to_process}
                     sql_segments = gen.render('waterfall_segments.sql.j2', ctx_segments)
                     sql_jobs.append({'type': 'segments', 'sql': sql_segments})
+            # --- END MODIFICATION ---
 
             out_path = os.path.join(self.cfg.output_directory,
                                     f"waterfall_report_{elig_cfg.eligibility_table}_{name}.xlsx")

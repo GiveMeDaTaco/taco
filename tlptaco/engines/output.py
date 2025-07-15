@@ -36,6 +36,13 @@ class OutputEngine:
         templates_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'sql', 'templates'))
         gen = SQLGenerator(templates_dir)
 
+        # --- START MODIFICATION ---
+        def create_sql_condition(check_list):
+            """Helper function to create a combined SQL AND condition."""
+            if not check_list:
+                return "1 = 1"  # Return a tautology if the list is empty
+            return " AND ".join([f"c.{check.name} = 1" for check in check_list])
+
         for channel_name, out_cfg in self.cfg.channels.items():
             self.logger.info(f"Preparing logic for channel '{channel_name}'")
 
@@ -44,26 +51,43 @@ class OutputEngine:
                 continue
 
             channel_elig_cfg = elig_cfg.conditions.channels[channel_name]
-            cases, exclusion_conditions = [], []
+            cases = []
+            exclusion_conditions = []
+
+            # Condition for main BA checks
+            main_ba_condition = create_sql_condition(elig_cfg.conditions.main.BA)
 
             # Case 1: Channel BA
-            ba_summary_col = f"c.passed_all_{channel_name}_BA"
-            cases.append(
-                {'template': f'{channel_name}_BA', 'condition': f'c.passed_all_main_BA = 1 AND {ba_summary_col} = 1'})
+            channel_ba_checks = channel_elig_cfg.BA
+            channel_ba_condition = create_sql_condition(channel_ba_checks)
+            cases.append({
+                'template': f'{channel_name}_BA',
+                'condition': f"({main_ba_condition}) AND ({channel_ba_condition})"
+            })
 
-            # Case 2: Other segments
+            # Case 2: Other segments (sorted by priority as defined in YAML)
             if channel_elig_cfg.others:
                 for segment_name, segment_checks in sorted(channel_elig_cfg.others.items()):
-                    segment_summary_col = f"c.passed_all_{channel_name}_{segment_name}"
+                    segment_condition = create_sql_condition(segment_checks)
+
+                    # Conditions for this segment include main BA, channel BA, and the segment's own checks
                     current_conditions = [
-                        'c.passed_all_main_BA = 1',
-                        f'{ba_summary_col} = 1',
-                        f'{segment_summary_col} = 1',
+                        f"({main_ba_condition})",
+                        f"({channel_ba_condition})",
+                        f"({segment_condition})",
                         *exclusion_conditions
                     ]
-                    cases.append(
-                        {'template': f'{channel_name}_{segment_name}', 'condition': " AND ".join(current_conditions)})
-                    exclusion_conditions.append(f"{segment_summary_col} = 0")
+                    cases.append({
+                        'template': f'{channel_name}_{segment_name}',
+                        'condition': " AND ".join(current_conditions)
+                    })
+
+                    # Add the inverse of this segment's condition to the exclusion list for the *next* segment
+                    # This ensures mutual exclusivity
+                    inverse_segment_condition = " OR ".join([f"c.{check.name} = 0" for check in segment_checks])
+                    if inverse_segment_condition:
+                        exclusion_conditions.append(f"({inverse_segment_condition})")
+            # --- END MODIFICATION ---
 
             context = {'eligibility_table': elig_cfg.eligibility_table, 'columns': out_cfg.columns,
                        'unique_on': out_cfg.unique_on, 'cases': cases}

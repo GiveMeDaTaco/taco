@@ -20,7 +20,6 @@ class EligibilityEngine:
         This method builds the context and renders the SQL template, but only once.
         The generated statements are cached in self._sql_statements.
         """
-        # If the SQL has already been generated, do nothing.
         if self._sql_statements is not None:
             self.logger.info("Using cached SQL statements.")
             return
@@ -39,6 +38,29 @@ class EligibilityEngine:
             if t.where_conditions:
                 where_clauses.append(t.where_conditions)
 
+        # --- START MODIFICATION ---
+        # Gather ALL checks from the entire configuration.
+        all_checks = []
+        # Add main BA checks
+        all_checks.extend(cfg.conditions.main.BA)
+        # Add main 'others' checks
+        for segment_checks in cfg.conditions.main.others.values():
+            all_checks.extend(segment_checks)
+
+        # Add all channel checks
+        for channel_cfg in cfg.conditions.channels.values():
+            # Add channel BA checks
+            all_checks.extend(channel_cfg.BA)
+            # Add channel 'others' checks
+            if channel_cfg.others:
+                for segment_checks in channel_cfg.others.values():
+                    all_checks.extend(segment_checks)
+
+        # Ensure we have a list of unique checks, in case of duplicates
+        # Using a dict to preserve order and uniqueness based on 'name'
+        unique_checks_dict = {chk.name: chk for chk in all_checks}
+        final_checks = list(unique_checks_dict.values())
+
         context = {
             'eligibility_table': cfg.eligibility_table,
             'unique_identifiers': cfg.unique_identifiers,
@@ -47,15 +69,15 @@ class EligibilityEngine:
             'where_clauses': where_clauses,
             'checks': [
                 {'name': chk.name, 'sql': chk.sql}
-                for chk in cfg.conditions.main.BA
+                for chk in final_checks
             ],
         }
+        # --- END MODIFICATION ---
 
         tmpl_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'sql', 'templates'))
-        gen = SQLGenerator(tmpl_dir)  # Using SQLGenerator for example
+        gen = SQLGenerator(tmpl_dir)
         sql = gen.render('eligibility.sql.j2', context)
 
-        # Cache the generated statements after stripping any whitespace
         self._sql_statements = [stmt for stmt in sql.split(';') if stmt.strip()]
 
     def num_steps(self) -> int:
