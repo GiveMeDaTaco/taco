@@ -38,6 +38,7 @@ import random
 import time
 import threading
 import sys
+import os
 from typing import List, Tuple
 
 from rich.console import Console, Group
@@ -126,8 +127,34 @@ class ProgressManager:
         """
         if units not in {"bytes", "steps"}:
             raise ValueError("units must be 'bytes' or 'steps'")
-
-        self.console = Console(force_terminal=True)
+        # Determine if terminal supports interactive progress
+        self.console = Console()
+        term_env = os.environ.get('TERM', '')
+        self.enabled = self.console.is_terminal and term_env.lower() != 'dumb'
+        self.units = units
+        self.title = title
+        # If not enabled, skip rich progress and avoid spamming output
+        if not self.enabled:
+            # Fallback: no progress display
+            self.grand_total = sum(total for _, total in layers)
+            self.overall = None
+            self.layers = None
+            self.total_task = None
+            self.task_ids = {}
+            self.finished = False
+            self.layout = None
+            self.live = None
+            return
+        # Interactive mode: build rich Progress bars
+        self.grand_total = sum(total for _, total in layers)
+        self.overall = Progress(*_build_columns(units, overall=True, title=title), console=self.console)
+        self.layers = Progress(*_build_columns(units), console=self.console)
+        self.total_task = self.overall.add_task("overall", total=self.grand_total)
+        self.task_ids = {name: self.layers.add_task(name, total=total) for name, total in layers}
+        # Track completion
+        self.finished = False
+        self.layout = Group(self.overall, self.layers)
+        self.live = None
 
         self.units = units
         self.title = title
@@ -142,12 +169,16 @@ class ProgressManager:
         self.live = None
 
     def __enter__(self):
+        if not self.enabled:
+            return self
         self.live = Live(self.layout, console=self.console, refresh_per_second=10)
         self.live.__enter__()
         return self
 
     def update(self, layer_name: str, advance: int = 1):
         """Advance the given layer and the overall bar by the specified amount."""
+        if not self.enabled:
+            return
         task_id = self.task_ids.get(layer_name)
         if task_id is None:
             raise KeyError(f"Unknown layer '{layer_name}'")
@@ -158,6 +189,8 @@ class ProgressManager:
 
 
     def __exit__(self, exc_type, exc, tb):
+        if not self.enabled:
+            return
         if self.live:
             self.live.__exit__(exc_type, exc, tb)
 
@@ -217,6 +250,8 @@ class LoadingSpinner:
     """Simple CLI spinner with rotating missing dot and funny snippets."""
 
     def __init__(self, interval: float = 0.2, snippet_interval: float = 2.0, snippets: list[str] | None = None):
+        # Enable spinner only on interactive terminals
+        self.enabled = sys.stdout.isatty() and os.environ.get('TERM', '').lower() != 'dumb'
         self.interval = interval
         self.snippet_interval = snippet_interval
         self.snippets = snippets or DEFAULT_SNIPPETS
@@ -254,6 +289,9 @@ class LoadingSpinner:
 
     def start(self):
         """Start the spinner in a background thread."""
+        # Only start spinner if terminal supports it
+        if not getattr(self, 'enabled', False):
+            return
         if self._thread and self._thread.is_alive():
             return
         self._stop_event.clear()
@@ -262,11 +300,18 @@ class LoadingSpinner:
 
     def stop(self):
         """Stop spinner and move to next line."""
+        # Only stop spinner if it was started
+        if not getattr(self, 'enabled', False):
+            return
         self._stop_event.set()
         if self._thread:
             self._thread.join()
-        sys.stdout.write("\r" + " " * 80 + "\r")
-        sys.stdout.flush()
+        # Clear spinner line
+        try:
+            sys.stdout.write("\r" + " " * 80 + "\r")
+            sys.stdout.flush()
+        except Exception:
+            pass
 
     def __enter__(self):
         self.start()

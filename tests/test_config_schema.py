@@ -12,8 +12,11 @@ from tlptaco.config.schema import (
 
 
 def make_template_conditions():
+    # create a BA filter and at least one dummy segment for testing
     ba = [ConditionCheck(name="chk", sql="1=1")]
-    return TemplateConditions(BA=ba, others={})
+    # legacy 'others' used to create a non-empty segment mapping
+    others = {"seg1": [ConditionCheck(name="chk2", sql="1=1")]}  # dummy segment
+    return TemplateConditions(BA=ba, others=others)
 
 
 def make_conditions_config():
