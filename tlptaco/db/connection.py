@@ -3,6 +3,7 @@ Wrap Teradata (and other) connections for SQL execution and data transfer.
 """
 import teradatasql
 import pandas as pd
+import warnings
 from typing import Any
 
 class DBConnection:
@@ -53,7 +54,15 @@ class DBConnection:
         if self.conn is None:
             self.connect()
         # Use pandas to read SQL via DB-API connection
-        return pd.read_sql(sql, self.conn)
+        # Suppress pandas warning about non-SQLAlchemy DBAPI2 connections
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                category=UserWarning,
+                message=r"pandas only supports SQLAlchemy connectable.*"
+            )
+            df = pd.read_sql(sql, self.conn)
+        return df
 
     def fastload(self, df, **kwargs):
         raise NotImplementedError("fastload is not supported with teradatasql driver")

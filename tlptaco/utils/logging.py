@@ -40,32 +40,34 @@ def configure_logging(cfg, verbose=False):
     # Prepare EmojiFormatter for file handlers or fallback console
     fmt_str = "%(emoji)s %(asctime)s %(name)s %(levelname)s: %(message)s"
     fmt = EmojiFormatter(fmt_str, datefmt="[%X]")
-    # Determine console log level
-    console_level = logging.DEBUG if verbose else getattr(logging, cfg.level.upper(), logging.INFO)
-    # Console handler: use EmojiRichHandler (with emojis) if Rich is available, else fallback
-    if RichHandler is not None and Text is not None:
-        # Subclass RichHandler to prefix level names with emoji
-        class EmojiRichHandler(RichHandler):  # type: ignore
-            def get_level_text(self, record):  # noqa: A003
-                level = record.levelname
-                style = f"logging.level.{level.lower()}"
-                emoji = LEVEL_EMOJI.get(level, "")
-                # pad level name to width 8
-                padded = level.ljust(8)
-                return Text.assemble((emoji + ' ' + padded, style))
-        rich_handler = EmojiRichHandler(
-            level=console_level,
-            markup=True,
-            show_time=True,
-            show_level=True,
-            show_path=False,
-        )
-        root.addHandler(rich_handler)
-    else:
-        ch = logging.StreamHandler()
-        ch.setLevel(console_level)
-        ch.setFormatter(fmt)
-        root.addHandler(ch)
+    # Optionally add console handler only if verbose flag is set
+    if verbose:
+        # Determine console log level
+        console_level = logging.DEBUG
+        # Console handler: use EmojiRichHandler (with emojis) if Rich is available, else fallback
+        if RichHandler is not None and Text is not None:
+            # Subclass RichHandler to prefix level names with emoji
+            class EmojiRichHandler(RichHandler):  # type: ignore
+                def get_level_text(self, record):  # noqa: A003
+                    level = record.levelname
+                    style = f"logging.level.{level.lower()}"
+                    emoji = LEVEL_EMOJI.get(level, "")
+                    # pad level name to width 8
+                    padded = level.ljust(8)
+                    return Text.assemble((emoji + ' ' + padded, style))
+            rich_handler = EmojiRichHandler(
+                level=console_level,
+                markup=True,
+                show_time=True,
+                show_level=True,
+                show_path=False,
+            )
+            root.addHandler(rich_handler)
+        else:
+            ch = logging.StreamHandler()
+            ch.setLevel(console_level)
+            ch.setFormatter(fmt)
+            root.addHandler(ch)
     # File handler
     if getattr(cfg, 'file', None):
         fh = logging.FileHandler(cfg.file)

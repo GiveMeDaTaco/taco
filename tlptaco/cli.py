@@ -4,12 +4,21 @@ Command-line interface for tlptaco version 2.
 import argparse
 import sys
 
+# Initialize CLI spinner as early as possible to cover heavy imports
+from tlptaco.utils.loading_bar import LoadingSpinner
+_spinner = LoadingSpinner()
+_spinner.start()
+import atexit
+# Ensure spinner is stopped on any exit (including --help or errors)
+atexit.register(_spinner.stop)
+
 from tlptaco.config.loader import load_config
 from tlptaco.db.runner import DBRunner
 from tlptaco.engines.eligibility import EligibilityEngine
 from tlptaco.engines.waterfall import WaterfallEngine
 from tlptaco.engines.output import OutputEngine
 from tlptaco.utils.logging import configure_logging
+
 
 def main():
     parser = argparse.ArgumentParser(description="tlptaco v2: Eligibility → Waterfall → Output pipeline")
@@ -21,6 +30,11 @@ def main():
                         help="Run mode: full (includes output) or presizing (eligibility+waterfall only)")
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose (DEBUG) console output")
     parser.add_argument("--progress", "-p", action="store_true", help="Show progress bars for pipeline stages (requires rich)")
+    # Stop the initialization spinner before parsing arguments (so help prints cleanly)
+    try:
+        _spinner.stop()
+    except Exception:
+        pass
     args = parser.parse_args()
 
     # Determine working directory for outputs/logs
@@ -47,6 +61,11 @@ def main():
             channel_cfg.file_location = os.path.join(workdir, loc)
     logger = configure_logging(config.logging, verbose=args.verbose)
     runner = DBRunner(config.database, logger)
+    # Ensure spinner is stopped after runner is ready
+    try:
+        _spinner.stop()
+    except Exception:
+        pass
 
     # Instantiate engines
     eligibility_engine = EligibilityEngine(config.eligibility, runner, logger)
@@ -65,7 +84,7 @@ def main():
             out_steps = output_engine.num_steps(eligibility_engine)
             layers.append(("Output", out_steps))
         # Run with progress bars
-        with ProgressManager(layers, units="steps") as pm:
+        with ProgressManager(layers, units="steps", title=config.offer_code) as pm:
             eligibility_engine.run(progress=pm)
             waterfall_engine.run(progress=pm)
             if args.mode == "full":

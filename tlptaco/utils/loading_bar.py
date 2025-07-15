@@ -2,14 +2,21 @@
 loading_bar.py
 --------------------------------
 
-A Rich‑powered utility that mimics Docker‑style multi‑layer progress with a
+A Rich-powered utility that mimics Docker-style multi-layer progress with a
 single **aggregate** bar on top and any number of **layer** bars underneath.
 
 New in this version
 ~~~~~~~~~~~~~~~~~~~
 * **Unit agnostic** – track *bytes* **or** *arbitrary steps* (e.g. epochs,
   items processed, test cases run). Switch with the `units` arg.
-* Clean, single‑Live implementation (avoids *rich.errors.LiveError*).
+* **IDE Compatibility** - Works correctly in IDE terminals (like PyCharm)
+  by forcing a live display.
+* **Graceful Exit** - Handles `Ctrl+C` (KeyboardInterrupt) cleanly, showing a
+  custom spinner with shutdown messages before exiting.
+* **Robust Threaded Design** - The main logic now runs in a worker thread,
+  allowing the main thread to remain responsive and catch `Ctrl+C` instantly,
+  even during blocking I/O operations (like database calls).
+* Clean, single-Live implementation (avoids *rich.errors.LiveError*).
 * Minimal public API: call `simulate()` or import the helpers into your own
   workflow.
 
@@ -17,35 +24,20 @@ Quick start
 -----------
 ```
 pip install rich
-python docker_style_overall_progress.py            # bytes demo (default)
-python docker_style_overall_progress.py steps      # steps demo
+python loading_bar.py            # bytes demo (default)
+python loading_bar.py steps      # steps demo
 ```
 
 You can also `import simulate` and feed it your own task list.
 
-API
----
-```python
-def simulate(layers: List[Tuple[str, int]], *, units: str = "bytes") -> None:
-    '''Render an overall bar plus one bar per layer.
-
-    Parameters
-    ----------
-    layers : list[tuple[str, int]]
-        (label, total) pairs. *total* is bytes when units="bytes" or raw
-        step counts when units="steps".
-    units : {"bytes", "steps"}, default "bytes"
-        Controls which columns are shown:
-        * "bytes"  → size, speed, ETA columns (like Docker)
-        * "steps"  → simple "completed/total steps" column instead.
-    '''
-```
 """
 
 from __future__ import annotations
 
 import random
 import time
+import threading
+import sys
 from typing import List, Tuple
 
 from rich.console import Console, Group
@@ -65,13 +57,14 @@ from rich.progress import (
 # ────────────────────────────────────────────────────────────────────────────────
 
 
-def _build_columns(units: str, overall: bool = False):
-    """Return a tuple of Rich column objects for *bytes* or *steps* mode."""
+def _build_columns(units: str, overall: bool = False, title: str = "Running"):
+    """Return a tuple of Rich column objects for *bytes* or *steps* mode.
+    When overall=True, the first column shows the given title."""
 
     if units == "bytes":
         if overall:
             return (
-                TextColumn("[bold green][+] Running", justify="right"),
+                TextColumn(f"[bold green][+] {title}", justify="right"),
                 BarColumn(bar_width=None, complete_style="cyan"),
                 DownloadColumn(binary_units=True),
                 TimeRemainingColumn(),
@@ -88,7 +81,7 @@ def _build_columns(units: str, overall: bool = False):
     # steps mode
     if overall:
         return (
-            TextColumn("[bold green][+] Running", justify="right"),
+            TextColumn(f"[bold green][+] {title}", justify="right"),
             BarColumn(bar_width=None, complete_style="cyan"),
             TextColumn("[progress.percentage]{task.completed}/{task.total} steps"),
             TimeRemainingColumn(),
@@ -100,7 +93,7 @@ def _build_columns(units: str, overall: bool = False):
         TextColumn("{task.completed}/{task.total} steps"),
         TimeRemainingColumn(),
     )
-   
+
 # ────────────────────────────────────────────────────────────────────────────────
 # ProgressManager: reusable class for multi-layer progress bars
 # ────────────────────────────────────────────────────────────────────────────────
@@ -115,20 +108,36 @@ class ProgressManager:
         "bytes" or "steps", controls display style.
     """
 
-    def __init__(self, layers: List[Tuple[str, int]], *, units: str = "steps"):
+    def __init__(self,
+                 layers: List[Tuple[str, int]],
+                 *,
+                 units: str = "steps",
+                 title: str = "Running"):
+        """Manage a multi-layer progress display with an overall bar and individual layer bars.
+
+        Parameters
+        ----------
+        layers : list[tuple[str, int]]
+            (label, total) pairs for each layer.
+        units : {"bytes", "steps"}
+            Controls display style.
+        title : str
+            Title text shown next to the overall progress bar.
+        """
         if units not in {"bytes", "steps"}:
             raise ValueError("units must be 'bytes' or 'steps'")
-        self.console = Console()
+
+        self.console = Console(force_terminal=True)
+
         self.units = units
-        # Sum totals for overall progress
+        self.title = title
         self.grand_total = sum(total for _, total in layers)
-        # Create Progress instances
-        self.overall = Progress(*_build_columns(units, overall=True))
-        self.layers = Progress(*_build_columns(units))
-        # Add overall and layer tasks
+        self.overall = Progress(*_build_columns(units, overall=True, title=title), console=self.console)
+        self.layers = Progress(*_build_columns(units), console=self.console)
         self.total_task = self.overall.add_task("overall", total=self.grand_total)
-        self.task_ids = { name: self.layers.add_task(name, total=total) for name, total in layers }
-        # Group for live layout
+        self.task_ids = {name: self.layers.add_task(name, total=total) for name, total in layers}
+        # A flag to check if all tasks are done
+        self.finished = False
         self.layout = Group(self.overall, self.layers)
         self.live = None
 
@@ -144,53 +153,127 @@ class ProgressManager:
             raise KeyError(f"Unknown layer '{layer_name}'")
         self.layers.update(task_id, advance=advance)
         self.overall.update(self.total_task, advance=advance)
+        # Check if all layer tasks are finished
+        self.finished = all(task.finished for task in self.layers.tasks)
+
 
     def __exit__(self, exc_type, exc, tb):
         if self.live:
             self.live.__exit__(exc_type, exc, tb)
 
+# ────────────────────────────────────────────────────────────────────────────────
+# Worker Function
+# ────────────────────────────────────────────────────────────────────────────────
+
+def worker_function(
+    progress_manager: ProgressManager,
+    layers: List[Tuple[str, int]],
+    units: str,
+    stop_event: threading.Event
+):
+    """This function contains the actual work being done.
+
+    In a real application, this is where you would put your long-running,
+    blocking calls (e.g., database queries, file processing).
+    """
+    while not progress_manager.finished:
+        if stop_event.is_set():
+            # The main thread has told us to stop.
+            return
+
+        for name, size in layers:
+            task_id = progress_manager.task_ids[name]
+            if progress_manager.layers.tasks[task_id].finished:
+                continue
+
+            if units == "bytes":
+                chunk = random.randint(200_000, 2_000_000)
+            else:
+                chunk = random.randint(1, max(1, size // 100))
+
+            progress_manager.update(name, advance=chunk)
+
+        # This sleep simulates I/O latency or other work
+        time.sleep(0.05)
+
 
 # ────────────────────────────────────────────────────────────────────────────────
-# Main simulation logic
+# CLI initialization spinner with funny snippets
 # ────────────────────────────────────────────────────────────────────────────────
+DEFAULT_SNIPPETS = [
+    "Reticulating splines...",
+    "Polishing the flux capacitor...",
+    "Negotiating with the server elves...",
+    "Counting to infinity...",
+    "Charging the warp drive...",
+    "Tickling the hamsters...",
+    "Aligning bits to bytes...",
+    "Spinning up the fun...",
+    "Herding cats...",
+    "Reheating pizza..."
+]
 
+class LoadingSpinner:
+    """Simple CLI spinner with rotating missing dot and funny snippets."""
 
-def simulate(layers: List[Tuple[str, int]], *, units: str = "bytes") -> None:
-    """Render an overall bar + individual layer bars until all layers finish."""
+    def __init__(self, interval: float = 0.2, snippet_interval: float = 2.0, snippets: list[str] | None = None):
+        self.interval = interval
+        self.snippet_interval = snippet_interval
+        self.snippets = snippets or DEFAULT_SNIPPETS
+        self._stop_event = threading.Event()
+        self._thread = None
 
-    if units not in {"bytes", "steps"}:
-        raise ValueError("units must be 'bytes' or 'steps'")
+    def _generate_frames(self) -> list[str]:
+        frames = []
+        total = 6
+        for miss in range(total):
+            symbols = ["●" if i != miss else " " for i in range(total)]
+            frames.append("[" + "".join(symbols) + "]")
+        return frames
 
-    console = Console()
-    grand_total = sum(size for _, size in layers)
+    def _spin(self):
+        frames = self._generate_frames()
+        frame_count = len(frames)
+        snippet_count = len(self.snippets)
+        idx_frame = idx_snip = 0
+        last_snip_time = time.time()
+        sys.stdout.write("\r" + " " * 80 + "\r")
+        sys.stdout.flush()
+        while not self._stop_event.is_set():
+            now = time.time()
+            if now - last_snip_time >= self.snippet_interval:
+                idx_snip = random.randrange(snippet_count)
+                last_snip_time = now
+            frame = frames[idx_frame]
+            snippet = self.snippets[idx_snip]
+            text = f"{frame} {snippet}"
+            sys.stdout.write("\r" + text.ljust(80))
+            sys.stdout.flush()
+            time.sleep(self.interval)
+            idx_frame = (idx_frame + 1) % frame_count
 
-    overall_progress = Progress(*_build_columns(units, overall=True))
-    layers_progress = Progress(*_build_columns(units))
+    def start(self):
+        """Start the spinner in a background thread."""
+        if self._thread and self._thread.is_alive():
+            return
+        self._stop_event.clear()
+        self._thread = threading.Thread(target=self._spin, daemon=True)
+        self._thread.start()
 
-    total_task = overall_progress.add_task("overall", total=grand_total)
-    per_layer_ids = {
-        name: layers_progress.add_task(name, total=size) for name, size in layers
-    }
+    def stop(self):
+        """Stop spinner and move to next line."""
+        self._stop_event.set()
+        if self._thread:
+            self._thread.join()
+        sys.stdout.write("\r" + " " * 80 + "\r")
+        sys.stdout.flush()
 
-    layout = Group(overall_progress, layers_progress)
+    def __enter__(self):
+        self.start()
+        return self
 
-    with Live(layout, console=console, refresh_per_second=10):
-        while not layers_progress.finished:
-            for name, size in layers:
-                tid = per_layer_ids[name]
-                if layers_progress.tasks[tid].finished:
-                    continue
-
-                # Determine synthetic 'work' chunk
-                if units == "bytes":
-                    chunk = random.randint(200_000, 2_000_000)  # 200 KB–2 MB
-                else:
-                    chunk = random.randint(1, max(1, size // 100))  # ~1% steps
-
-                layers_progress.update(tid, advance=chunk)
-                overall_progress.update(total_task, advance=chunk)
-
-            time.sleep(0.05)
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.stop()
 
 
 # ────────────────────────────────────────────────────────────────────────────────
@@ -210,4 +293,52 @@ if __name__ == "__main__":
         ("e2f3c1d2: Downloading", 160_000_000 if mode == "bytes" else 700),
     ]
 
-    simulate(DEMO_LAYERS, units=mode)
+    # Set up the progress manager and threading events
+    pm = ProgressManager(DEMO_LAYERS, units=mode)
+    stop_event = threading.Event()
+
+    # Set up and start the worker thread. It's a daemon so it will exit
+    # when the main thread exits.
+    worker = threading.Thread(
+        target=worker_function,
+        args=(pm, DEMO_LAYERS, mode, stop_event),
+        daemon=True
+    )
+
+    try:
+        # Use the ProgressManager as a context manager to handle the Live display
+        with pm:
+            worker.start()
+            # This loop keeps the main thread alive and responsive to Ctrl+C
+            # while the worker thread does its job.
+            while worker.is_alive():
+                # We use a non-blocking join to prevent this loop from
+                # locking up the main thread.
+                worker.join(timeout=0.1)
+
+    except KeyboardInterrupt:
+        # This block now runs immediately when you press Ctrl+C.
+        console = Console()
+        console.print("\n[bold yellow]Interruption received. Telling worker to stop...[/bold yellow]")
+        stop_event.set()
+        # Give the worker a moment to shut down
+        worker.join()
+
+        # Now run the shutdown spinner for a nice exit effect
+        shutdown_snippets = [
+            "Cleaning up...",
+            "Putting the tools away...",
+            "Turning off the lights...",
+            "One moment...",
+            "Shutting down gracefully...",
+        ]
+        with LoadingSpinner(snippets=shutdown_snippets):
+            time.sleep(2)
+        print("Process interrupted. Exiting.")
+        sys.exit(0)
+
+    except Exception as e:
+        console = Console()
+        console.print_exception()
+        sys.exit(1)
+

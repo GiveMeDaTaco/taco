@@ -1,1 +1,0 @@
-from tlptaco.eligibility.eligibility import Eligible

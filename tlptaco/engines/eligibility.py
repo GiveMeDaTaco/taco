@@ -43,18 +43,17 @@ class EligibilityEngine:
         all_checks = []
         # Add main BA checks
         all_checks.extend(cfg.conditions.main.BA)
-        # Add main 'others' checks
-        for segment_checks in cfg.conditions.main.others.values():
+        # Add main segments checks (legacy 'others' merged into 'segments')
+        for segment_checks in cfg.conditions.main.segments.values():
             all_checks.extend(segment_checks)
 
         # Add all channel checks
         for channel_cfg in cfg.conditions.channels.values():
             # Add channel BA checks
             all_checks.extend(channel_cfg.BA)
-            # Add channel 'others' checks
-            if channel_cfg.others:
-                for segment_checks in channel_cfg.others.values():
-                    all_checks.extend(segment_checks)
+            # Add channel segments checks
+            for segment_checks in channel_cfg.segments.values():
+                all_checks.extend(segment_checks)
 
         # Ensure we have a list of unique checks, in case of duplicates
         # Using a dict to preserve order and uniqueness based on 'name'
