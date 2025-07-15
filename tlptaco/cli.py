@@ -33,6 +33,18 @@ def main():
         config.logging.file = os.path.join(workdir, 'logs', 'tlptaco.log')
     if not config.logging.debug_file:
         config.logging.debug_file = os.path.join(workdir, 'logs', 'tlptaco.debug.log')
+
+    # Override waterfall and output paths to live under --output-dir
+    # Waterfall output directory
+    wf_dir = config.waterfall.output_directory
+    if wf_dir and not os.path.isabs(wf_dir):
+        config.waterfall.output_directory = os.path.join(workdir, wf_dir)
+
+    # Output channel file locations
+    for channel_cfg in config.output.channels.values():
+        loc = channel_cfg.file_location
+        if loc and not os.path.isabs(loc):
+            channel_cfg.file_location = os.path.join(workdir, loc)
     logger = configure_logging(config.logging, verbose=args.verbose)
     runner = DBRunner(config.database, logger)
 

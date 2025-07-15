@@ -44,12 +44,13 @@ class WaterfallEngine:
         templates_dir = os.path.join(os.path.dirname(__file__), '..', 'sql', 'templates')
         gen = SQLGenerator(templates_dir)
 
-        def create_sql_condition(check_list):
-            """Helper function to create a combined SQL AND condition from a list of checks."""
+        def create_sql_condition(check_list, operator='AND'):
+            """Helper function to create a combined SQL condition."""
             if not check_list:
-                return "1=1"  # A condition that is always true
+                return "1=1"
+            op = f" {operator.strip()} "
             conditions = [f"c.{check.name} = 1" for check in check_list]
-            return f"({' AND '.join(conditions)})"
+            return f"({op.join(conditions)})"
 
         # 2. For each group, prepare the SQL and metadata for each report section
         for grp in groups:
@@ -65,10 +66,8 @@ class WaterfallEngine:
 
             # --- SECTION 2: PER-CHANNEL WATERFALLS ---
             for channel_name, channel_cfg in elig_cfg.conditions.channels.items():
-                # Dynamically create the base filter for records that passed all main BA checks
                 base_filter = create_sql_condition(elig_cfg.conditions.main.BA)
 
-                # Create the waterfall for the channel's specific BA checks
                 channel_ba_checks_list = channel_cfg.BA
                 channel_ba_check_names = [chk.name for chk in channel_ba_checks_list]
                 ctx_chan_ba = {'eligibility_table': elig_cfg.eligibility_table, 'unique_identifiers': uniq_ids,
@@ -77,18 +76,16 @@ class WaterfallEngine:
                 sql_jobs.append({'type': 'standard', 'sql': sql_chan_ba, 'section_name': f'{channel_name} - BA'})
 
                 if channel_cfg.others:
-                    # Create the next level filter for records that also passed the channel's BA checks
                     channel_ba_condition = create_sql_condition(channel_ba_checks_list)
                     segment_base_filter = f"{base_filter} AND {channel_ba_condition}"
 
-                    # Prepare the segments, building their pass/fail conditions dynamically
                     segments_to_process = []
                     for s_name, s_checks in sorted(channel_cfg.others.items()):
-                        segment_condition = create_sql_condition(s_checks)
+                        # Use OR for segments with multiple checks (e.g., promo, tx)
+                        segment_condition = create_sql_condition(s_checks, operator='OR')
                         segments_to_process.append({
                             'name': f'{channel_name} - {s_name}',
                             'checks': [c.name for c in s_checks],
-                            # We reuse 'summary_column' but pass the full condition string into the template
                             'summary_column': segment_condition
                         })
 
@@ -96,7 +93,6 @@ class WaterfallEngine:
                                     'pre_filter': segment_base_filter, 'segments': segments_to_process}
                     sql_segments = gen.render('waterfall_segments.sql.j2', ctx_segments)
                     sql_jobs.append({'type': 'segments', 'sql': sql_segments})
-            # --- END MODIFICATION ---
 
             out_path = os.path.join(self.cfg.output_directory,
                                     f"waterfall_report_{elig_cfg.eligibility_table}_{name}.xlsx")
@@ -118,7 +114,7 @@ class WaterfallEngine:
         metric_df = df[df['stat_name'] != 'Records Claimed']
         if metric_df.empty:
             return pd.DataFrame()
-        pivoted = metric_df.pivot_table(index='check_name', columns='stat_name', values='value').reset_index()
+        pivoted = metric_df.pivot_table(index='check_name', columns='stat_name', values='cntr').reset_index()
         pivoted['section'] = section_name
         return pivoted
 
@@ -156,7 +152,7 @@ class WaterfallEngine:
                             section_df = self._pivot_waterfall_df(detail_rows[detail_rows['section'] == section_name],
                                                                   section_name)
                             all_report_sections.append(section_df)
-                        all_report_sections.append(summary_rows[['section', 'stat_name', 'value']])
+                        all_report_sections.append(summary_rows[['section', 'stat_name', 'cntr']])
 
                 if all_report_sections:
                     final_df = pd.concat(all_report_sections, ignore_index=True)
