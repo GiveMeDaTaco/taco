@@ -19,11 +19,13 @@ class DummyRunner:
         self.queries.append(sql)
     def to_df(self, sql):
         # Return a dummy waterfall result based on sql context
-        # Simulate two checks with two metrics
+        # Simulate two checks with two metrics; use 'cntr' column to match engine expectations
         df = pd.DataFrame([
-            {'check_name': 'chk1', 'stat_name': 'unique_drops', 'value': 10},
-            {'check_name': 'chk2', 'stat_name': 'remaining', 'value': 5},
+            {'check_name': 'chk1', 'stat_name': 'unique_drops', 'cntr': 10},
+            {'check_name': 'chk2', 'stat_name': 'remaining', 'cntr': 5},
         ])
+        # Include 'section' column expected by pivot logic
+        df['section'] = 'Base'
         return df
     def cleanup(self):
         pass
@@ -96,17 +98,24 @@ def test_full_campaign_flow(tmp_path, monkeypatch):
 
     # Run Waterfall
     wf_engine = WaterfallEngine(app_cfg.waterfall, runner, logger)
-    # Monkeypatch DataFrame.to_excel to capture Excel output
+    # Monkeypatch write_waterfall_excel to capture output without writing files
+    from tlptaco.engines.waterfall_excel import write_waterfall_excel as real_writer
     captured = {}
-    def fake_to_excel(self, path, index=False):
-        captured['path'] = path
-        captured['df'] = self.copy()
-    monkeypatch.setattr(pd.DataFrame, 'to_excel', fake_to_excel)
+    def fake_writer(conditions_df, compiled, output_path, group_name,
+                     offer_code, campaign_planner, lead, current_date):
+        captured['path'] = output_path
+        captured['compiled'] = compiled
+    monkeypatch.setattr('tlptaco.engines.waterfall_excel.write_waterfall_excel', fake_writer)
+    # Run waterfall report
     wf_engine.run(elig_engine)
-    # Verify an Excel path was set under tmp_path
-    # The output path should include the output_directory path
-    assert str(tmp_path) in captured['path']
-    # DataFrame should have columns ['check_name','unique_drops','remaining','section']
-    df_out = captured['df']
+    # Verify an Excel path was generated under output_directory
+    assert str(tmp_path) in captured.get('path', '')
+    # compiled is list of (section_name, DataFrame) tuples
+    compiled = captured.get('compiled', [])
+    assert compiled, "No compiled output captured"
+    # Inspect the first section's DataFrame
+    section_name, df_out = compiled[0]
+    # It should include check_name and the new metrics columns
     assert 'chk1' in df_out['check_name'].values
     assert 'unique_drops' in df_out.columns
+    assert 'remaining' in df_out.columns

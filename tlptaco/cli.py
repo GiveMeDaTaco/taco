@@ -70,6 +70,10 @@ def main():
     # Instantiate engines
     eligibility_engine = EligibilityEngine(config.eligibility, runner, logger)
     waterfall_engine = WaterfallEngine(config.waterfall, runner, logger)
+    # Propagate metadata from config
+    waterfall_engine.offer_code = config.offer_code
+    waterfall_engine.campaign_planner = config.campaign_planner
+    waterfall_engine.lead = config.lead
     if args.mode == "full":
         output_engine = OutputEngine(config.output, runner, logger)
 

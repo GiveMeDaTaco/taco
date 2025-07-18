@@ -7,6 +7,7 @@ from tlptaco.utils.logging import get_logger
 from tlptaco.sql.generator import SQLGenerator
 import os
 import pandas as pd
+from datetime import datetime
 
 
 class WaterfallEngine:
@@ -14,6 +15,10 @@ class WaterfallEngine:
         self.cfg = cfg
         self.runner = runner
         self.logger = logger or get_logger("waterfall")
+        # Metadata (to be set by CLI)
+        self.offer_code: str = ''
+        self.campaign_planner: str = ''
+        self.lead: str = ''
         # Cache for prepared steps and the eligibility engine
         self._waterfall_groups = None
         self._eligibility_engine = None
@@ -59,29 +64,44 @@ class WaterfallEngine:
 
             # --- SECTION 1: MAIN/BASE WATERFALL ---
             main_ba_checks = [chk.name for chk in elig_cfg.conditions.main.BA]
-            ctx_main = {'eligibility_table': elig_cfg.eligibility_table, 'unique_identifiers': uniq_ids,
-                        'check_columns': main_ba_checks, 'pre_filter': None}
+            ctx_main = {
+                'eligibility_table': elig_cfg.eligibility_table,
+                'unique_identifiers': uniq_ids,
+                'check_columns': main_ba_checks,
+                'pre_filter': None,
+                'segments': []  # no non-BA segments in base waterfall
+            }
             sql_main = gen.render('waterfall_full.sql.j2', ctx_main)
             sql_jobs.append({'type': 'standard', 'sql': sql_main, 'section_name': 'Base'})
 
             # --- SECTION 2: PER-CHANNEL WATERFALLS ---
             for channel_name, channel_cfg in elig_cfg.conditions.channels.items():
+                # Prepare per-channel non-BA segments list for Regain logic
+                segments_to_process = []
+                # Base filter: passed all main BA checks
                 base_filter = create_sql_condition(elig_cfg.conditions.main.BA)
 
+                # Channel BA checks
                 channel_ba_checks_list = channel_cfg.BA
                 channel_ba_check_names = [chk.name for chk in channel_ba_checks_list]
-                ctx_chan_ba = {'eligibility_table': elig_cfg.eligibility_table, 'unique_identifiers': uniq_ids,
-                               'check_columns': channel_ba_check_names, 'pre_filter': base_filter}
-                sql_chan_ba = gen.render('waterfall_full.sql.j2', ctx_chan_ba)
-                sql_jobs.append({'type': 'standard', 'sql': sql_chan_ba, 'section_name': f'{channel_name} - BA'})
+                # CHANNEL BA WATERFALL
+                if channel_ba_check_names:
+                    ctx_chan_ba = {
+                        'eligibility_table': elig_cfg.eligibility_table,
+                        'unique_identifiers': uniq_ids,
+                        'check_columns': channel_ba_check_names,
+                        'pre_filter': base_filter,
+                        'segments': segments_to_process
+                    }
+                    sql_chan_ba = gen.render('waterfall_full.sql.j2', ctx_chan_ba)
+                    sql_jobs.append({'type': 'standard', 'sql': sql_chan_ba, 'section_name': f'{channel_name} - BA'})
 
+                # CHANNEL non-BA segments
                 if channel_cfg.others:
                     channel_ba_condition = create_sql_condition(channel_ba_checks_list)
                     segment_base_filter = f"{base_filter} AND {channel_ba_condition}"
 
-                    segments_to_process = []
                     for s_name, s_checks in sorted(channel_cfg.others.items()):
-                        # Use OR for segments with multiple checks (e.g., promo, tx)
                         segment_condition = create_sql_condition(s_checks, operator='OR')
                         segments_to_process.append({
                             'name': f'{channel_name} - {s_name}',
@@ -89,8 +109,12 @@ class WaterfallEngine:
                             'summary_column': segment_condition
                         })
 
-                    ctx_segments = {'eligibility_table': elig_cfg.eligibility_table, 'unique_identifiers': uniq_ids,
-                                    'pre_filter': segment_base_filter, 'segments': segments_to_process}
+                    ctx_segments = {
+                        'eligibility_table': elig_cfg.eligibility_table,
+                        'unique_identifiers': uniq_ids,
+                        'pre_filter': segment_base_filter,
+                        'segments': segments_to_process
+                    }
                     sql_segments = gen.render('waterfall_segments.sql.j2', ctx_segments)
                     sql_jobs.append({'type': 'segments', 'sql': sql_segments})
 
@@ -139,7 +163,10 @@ class WaterfallEngine:
             all_report_sections = []
             try:
                 for job in group['jobs']:
+                    # Fetch raw results and normalize metric column ('cntr' vs. legacy 'value')
                     df_raw = self.runner.to_df(job['sql'])
+                    if 'cntr' not in df_raw.columns and 'value' in df_raw.columns:
+                        df_raw = df_raw.rename(columns={'value': 'cntr'})
 
                     if job['type'] == 'standard':
                         df_pivoted = self._pivot_waterfall_df(df_raw, job['section_name'])
@@ -155,8 +182,42 @@ class WaterfallEngine:
                         all_report_sections.append(summary_rows[['section', 'stat_name', 'cntr']])
 
                 if all_report_sections:
-                    final_df = pd.concat(all_report_sections, ignore_index=True)
-                    final_df.to_excel(group['output_path'], index=False)
+                    # Combine all sections into a mapping for Excel writer
+                    # Preserve ordering of sections, including summary vs detail
+                    compiled = []  # list of (section_name, DataFrame)
+                    for df in all_report_sections:
+                        sec = df['section'].iat[0]
+                        section_df = df.drop(columns='section').reset_index(drop=True)
+                        compiled.append((sec, section_df))
+
+                    # Build conditions DataFrame
+                    conds = engine_to_use.cfg.conditions
+                    cond_rows = []
+                    # main BA
+                    for chk in conds.main.BA:
+                        cond_rows.append({'check_name': chk.name, 'sql': chk.sql, 'description': chk.description})
+                    # channel BA and segments
+                    for chname, chcfg in conds.channels.items():
+                        for chk in chcfg.BA:
+                            cond_rows.append({'check_name': chk.name, 'sql': chk.sql, 'description': chk.description})
+                        for seg_checks in chcfg.segments.values():
+                            for chk in seg_checks:
+                                cond_rows.append({'check_name': chk.name, 'sql': chk.sql, 'description': chk.description})
+                    conditions_df = pd.DataFrame(cond_rows).set_index('check_name')
+
+                    # Write Excel with waterfall formatting
+                    import tlptaco.engines.waterfall_excel as wf_excel_mod
+                    now = datetime.now().strftime("%Y-%m-%d %H_%M_%S")
+                    wf_excel_mod.write_waterfall_excel(
+                        conditions_df,
+                        compiled,
+                        group['output_path'],
+                        group['name'],
+                        self.offer_code,
+                        self.campaign_planner,
+                        self.lead,
+                        now
+                    )
                     self.logger.info(f"Waterfall report for '{group['name']}' saved to {group['output_path']}")
 
             except Exception as e:

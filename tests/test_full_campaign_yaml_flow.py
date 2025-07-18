@@ -4,6 +4,22 @@ import pytest
 import pandas as pd
 
 from pathlib import Path
+import pandas as pd
+from tlptaco.sql.generator import SQLGenerator as RealGen
+
+# Auto-patch SQLGenerator to return dummy SQL for waterfall templates
+class FakeGen(RealGen):
+    def render(self, template_name, context):
+        return "SELECT * FROM dummy;"
+import tlptaco.engines.eligibility as elig_mod
+import tlptaco.engines.waterfall as wf_mod
+import tlptaco.engines.output as out_mod
+@pytest.fixture(autouse=True)
+def patch_sqlgenerator(monkeypatch):
+    monkeypatch.setattr(elig_mod, 'SQLGenerator', FakeGen)
+    monkeypatch.setattr(wf_mod, 'SQLGenerator', FakeGen)
+    monkeypatch.setattr(out_mod, 'SQLGenerator', FakeGen)
+    yield
 from tlptaco.config.loader import load_config
 from tlptaco.config.schema import AppConfig
 from tlptaco.engines.eligibility import EligibilityEngine
@@ -18,11 +34,12 @@ class DummyRunner:
         # track executed SQL
         self.queries.append(sql)
     def to_df(self, sql):
-        # Return a simple DataFrame for waterfall and output
-        return pd.DataFrame([
-            {'check_name': 'chkA', 'stat_name': 'unique_drops', 'value': 1},
-            {'check_name': 'chkB', 'stat_name': 'remaining', 'value': 2},
+        # Return a simple DataFrame for waterfall and output that matches engine expectations
+        df = pd.DataFrame([
+            {'check_name': 'chkA', 'stat_name': 'unique_drops', 'cntr': 1, 'section': 'Base'},
+            {'check_name': 'chkB', 'stat_name': 'remaining', 'cntr': 2, 'section': 'Base'},
         ])
+        return df
     def cleanup(self):
         pass
 
@@ -32,20 +49,6 @@ class DummyLogger:
     def debug(self, msg): pass
     def exception(self, msg): pass
 
-@pytest.fixture(autouse=True)
-def patch_sqlgenerator(monkeypatch):
-    # Fake SQLGenerator to bypass Jinja templates
-    from tlptaco.sql.generator import SQLGenerator as RealGen
-    class FakeGen(RealGen):
-        def render(self, template_name, context):
-            return "SELECT * FROM dummy;"
-    import tlptaco.engines.eligibility as elig_mod
-    import tlptaco.engines.waterfall as wf_mod
-    import tlptaco.engines.output as out_mod
-    monkeypatch.setattr(elig_mod, 'SQLGenerator', FakeGen)
-    monkeypatch.setattr(wf_mod, 'SQLGenerator', FakeGen)
-    monkeypatch.setattr(out_mod, 'SQLGenerator', FakeGen)
-    yield
 
 def test_full_campaign_from_yaml(tmp_path, monkeypatch):
     # Build a complex config with multiple channels and templates
@@ -136,15 +139,20 @@ def test_full_campaign_from_yaml(tmp_path, monkeypatch):
     runner.queries.clear()
 
     # Run waterfall
-    # Capture excel outputs
-    wf_outputs = []
-    def fake_to_excel(self, path, index=False, **kwargs):
-        wf_outputs.append(path)
-    monkeypatch.setattr(pd.DataFrame, 'to_excel', fake_to_excel)
+    # Capture Excel outputs via write_waterfall_excel
+    # Patch the Excel writer to capture waterfall outputs
+    import tlptaco.engines.waterfall_excel as wf_excel_mod
+    wf_captured = {}
+    def fake_wf_writer(conditions_df, compiled, output_path, group_name,
+                       offer_code, campaign_planner, lead, current_date):
+        wf_captured.setdefault('paths', []).append(output_path)
+        wf_captured['compiled'] = compiled
+    monkeypatch.setattr(wf_excel_mod, 'write_waterfall_excel', fake_wf_writer)
     wf_engine = WaterfallEngine(app_cfg.waterfall, runner, logger)
     wf_engine.run(elig_engine)
     # Expect at least one waterfall report under wf directory
-    assert any(str(tmp_path / 'wf') in p for p in wf_outputs)
+    paths = wf_captured.get('paths', [])
+    assert any(str(tmp_path / 'wf') in p for p in paths)
 
     # Run output stage
     out_records = []

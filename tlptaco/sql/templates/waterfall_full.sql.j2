@@ -30,27 +30,74 @@ FROM (
       'Total' AS check_name,
       COUNT(*) AS cntr
     FROM base_population
+
     UNION ALL
-    {%- for part in ['unique_drops', 'incremental_drops', 'remaining', 'cumulative_drops'] %}
+
+    -- Drop If Only This Scrub
+    {%- for col in check_columns %}
     SELECT
-      '{{ part }}' AS stat_name,
-      check_name,
-      cntr
-    FROM (
-        {% for col in check_columns %}
-        SELECT
-          '{{ col }}' as check_name,
-          {%- if part == 'unique_drops' %} SUM(CASE WHEN {{ col }} = 0 THEN 1 ELSE 0 END)
-          {%- elif part == 'incremental_drops' %} SUM(CASE WHEN {{ col }} = 0 {%- for prev in check_columns[:loop.index0] %} AND {{ prev }} = 1{%- endfor %} THEN 1 ELSE 0 END)
-          {%- elif part == 'remaining' %} SUM(CASE WHEN {{ col }} = 1 {%- for prev in check_columns[:loop.index0] %} AND {{ prev }} = 1{%- endfor %} THEN 1 ELSE 0 END)
-          {%- elif part == 'cumulative_drops' %} COUNT(*) - SUM(CASE WHEN {{ col }} = 1 {%- for prev in check_columns[:loop.index0] %} AND {{ prev }} = 1{%- endfor %} THEN 1 ELSE 0 END)
-          {%- endif %} AS cntr
-        FROM flags
-        {% if not loop.last %}UNION ALL{% endif %}
-        {% endfor %}
-    ) q
-    {%- if not loop.last %}
+      'unique_drops' AS stat_name,
+      '{{ col }}' AS check_name,
+      SUM(CASE WHEN {{ col }} = 0
+               AND ( {%- for other in check_columns if other != col %}{{ other }} = 1{%- if not loop.last %} AND {% endif %}{% endfor %} )
+               THEN 1 ELSE 0 END) AS cntr
+    FROM flags
+    {%- if not loop.last %}UNION ALL{% endif %}
+    {%- endfor %}
+
     UNION ALL
-    {% endif %}
+
+    -- Drop Incremental
+    {%- for col in check_columns %}
+    SELECT
+      'incremental_drops' AS stat_name,
+      '{{ col }}' AS check_name,
+      SUM(CASE WHEN {{ col }} = 0
+               {%- for prev in check_columns[:loop.index0] %}AND {{ prev }} = 1 {%- endfor %}
+               THEN 1 ELSE 0 END) AS cntr
+    FROM flags
+    {%- if not loop.last %}UNION ALL{% endif %}
+    {%- endfor %}
+
+    UNION ALL
+
+    -- Drop Cumulative
+    {%- for col in check_columns %}
+    SELECT
+      'cumulative_drops' AS stat_name,
+      '{{ col }}' AS check_name,
+      COUNT(*) - SUM(CASE WHEN {{ col }} = 1
+                         {%- for prev in check_columns[:loop.index0] %}AND {{ prev }} = 1{%- endfor %}
+                         THEN 1 ELSE 0 END) AS cntr
+    FROM flags
+    {%- if not loop.last %}UNION ALL{% endif %}
+    {%- endfor %}
+
+    UNION ALL
+
+    -- Regain If No Scrub
+    {%- for col in check_columns %}
+    SELECT
+      'regain' AS stat_name,
+      '{{ col }}' AS check_name,
+      SUM(CASE WHEN {{ col }} = 0
+               AND ( {%- for other in check_columns if other != col %}{{ other }} = 1{%- if not loop.last %} AND {% endif %}{% endfor %} )
+               THEN 1 ELSE 0 END) AS cntr
+    FROM flags
+    {%- if not loop.last %}UNION ALL{% endif %}
+    {%- endfor %}
+
+    UNION ALL
+
+    -- Remaining
+    {%- for col in check_columns %}
+    SELECT
+      'remaining' AS stat_name,
+      '{{ col }}' AS check_name,
+      SUM(CASE WHEN {{ col }} = 1
+               {%- for prev in check_columns[:loop.index0] %}AND {{ prev }} = 1{%- endfor %}
+               THEN 1 ELSE 0 END) AS cntr
+    FROM flags
+    {%- if not loop.last %}UNION ALL{% endif %}
     {%- endfor %}
 ) metrics;

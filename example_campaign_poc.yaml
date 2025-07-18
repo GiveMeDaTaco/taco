@@ -1,3 +1,6 @@
+campaign_planner: Michael
+lead: Andrew
+
 logging:
   level: INFO
   file: logs/tlptaco_poc.log

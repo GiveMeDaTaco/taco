@@ -5,13 +5,20 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="63b14ffc-1efe-4104-8c39-f9067e25e601" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/old_waterfall/construct_sql.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/old_waterfall/construct_sql/waterfall.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/old_waterfall/waterfall.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/temp/logic.txt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/example_campaign_poc.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/example_campaign_poc.yaml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tests/test_config_schema.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_config_schema.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tlptaco/utils/loading_bar.py" beforeDir="false" afterPath="$PROJECT_DIR$/tlptaco/utils/loading_bar.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/old_waterfall/construct_sql.py" beforeDir="false" afterPath="$PROJECT_DIR$/tlptaco/old_waterfall/construct_sql.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/old_waterfall/construct_sql/waterfall.py" beforeDir="false" afterPath="$PROJECT_DIR$/tlptaco/old_waterfall/construct_sql/waterfall.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/old_waterfall/waterfall.py" beforeDir="false" afterPath="$PROJECT_DIR$/tlptaco/old_waterfall/waterfall.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_full_campaign_flow.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_full_campaign_flow.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_full_campaign_yaml_flow.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_full_campaign_yaml_flow.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tlptaco/cli.py" beforeDir="false" afterPath="$PROJECT_DIR$/tlptaco/cli.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tlptaco/config/schema.py" beforeDir="false" afterPath="$PROJECT_DIR$/tlptaco/config/schema.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tlptaco/engines/waterfall.py" beforeDir="false" afterPath="$PROJECT_DIR$/tlptaco/engines/waterfall.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tlptaco/sql/templates/waterfall.sql.j2" beforeDir="false" afterPath="$PROJECT_DIR$/tlptaco/sql/templates/waterfall.sql.j2" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tlptaco/sql/templates/waterfall_full.sql.j2" beforeDir="false" afterPath="$PROJECT_DIR$/tlptaco/sql/templates/waterfall_full.sql.j2" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tlptaco/sql/templates/waterfall_segments.sql.j2" beforeDir="false" afterPath="$PROJECT_DIR$/tlptaco/sql/templates/waterfall_segments.sql.j2" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -36,31 +43,32 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "Python.cli.executor": "Debug",
-    "Python.debug tlptaco.cli.executor": "Debug",
-    "Python.prep_test_db_poc.executor": "Run",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.git.unshallow": "true",
-    "git-widget-placeholder": "recode__segments",
-    "ignore.virus.scanning.warn.message": "true",
-    "junie.onboarding.icon.badge.shown": "true",
-    "last_opened_file_path": "//wsl.localhost/Ubuntu-22.04/home/taco/projects/recodeWaterfall",
-    "node.js.detected.package.eslint": "true",
-    "node.js.detected.package.tslint": "true",
-    "node.js.selected.package.eslint": "(autodetect)",
-    "node.js.selected.package.tslint": "(autodetect)",
-    "nodejs_package_manager_path": "npm",
-    "settings.editor.selected.configurable": "preferences.pluginManager",
-    "vue.rearranger.settings.migration": "true"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;Python.cli.executor&quot;: &quot;Debug&quot;,
+    &quot;Python.debug tlptaco.cli.executor&quot;: &quot;Debug&quot;,
+    &quot;Python.prep_test_db_poc.executor&quot;: &quot;Run&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;recode__segments&quot;,
+    &quot;ignore.virus.scanning.warn.message&quot;: &quot;true&quot;,
+    &quot;junie.onboarding.icon.badge.shown&quot;: &quot;true&quot;,
+    &quot;last_opened_file_path&quot;: &quot;//wsl.localhost/Ubuntu-22.04/home/taco/projects/recodeWaterfall&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.pluginManager&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
-}]]></component>
+}</component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
       <recent name="\\wsl.localhost\Ubuntu-22.04\home\taco\projects\recodeWaterfall" />
     </key>
     <key name="MoveFile.RECENT_KEYS">
+      <recent name="\\wsl.localhost\Ubuntu-22.04\home\taco\projects\recodeWaterfall\tlptaco" />
       <recent name="\\wsl.localhost\Ubuntu-22.04\home\taco\projects\recodeWaterfall\tlptaco\deprecated" />
       <recent name="\\wsl.localhost\Ubuntu-22.04\home\taco\projects\recodeWaterfall" />
     </key>
@@ -105,7 +113,7 @@
       <option name="ADD_SOURCE_ROOTS" value="true" />
       <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
       <option name="SCRIPT_NAME" value="tlptaco.cli" />
-      <option name="PARAMETERS" value="--config example_campaign_poc.yaml --output-dir reports/poc --mode full --progress" />
+      <option name="PARAMETERS" value="--config example_campaign_poc.yaml --output-dir reports/poc --mode full --progress --verbose" />
       <option name="SHOW_COMMAND_LINE" value="false" />
       <option name="EMULATE_TERMINAL" value="false" />
       <option name="MODULE_MODE" value="true" />
@@ -146,7 +154,9 @@
       <workItem from="1752333906794" duration="14708000" />
       <workItem from="1752499922413" duration="13573000" />
       <workItem from="1752537738883" duration="16217000" />
-      <workItem from="1752585520767" duration="6175000" />
+      <workItem from="1752585520767" duration="9691000" />
+      <workItem from="1752688941888" duration="21934000" />
+      <workItem from="1752759974095" duration="13921000" />
     </task>
     <servers />
   </component>
@@ -156,6 +166,6 @@
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
     <SUITE FILE_PATH="coverage/recodeWaterfall$prep_test_db_poc.coverage" NAME="prep_test_db_poc Coverage Results" MODIFIED="1752523256485" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/recodeWaterfall$cli.coverage" NAME="cli Coverage Results" MODIFIED="1752343868771" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/tlptaco" />
-    <SUITE FILE_PATH="coverage/recodeWaterfall$debug_tlptaco_cli.coverage" NAME="debug tlptaco.cli Coverage Results" MODIFIED="1752585586799" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="" />
+    <SUITE FILE_PATH="coverage/recodeWaterfall$debug_tlptaco_cli.coverage" NAME="debug tlptaco.cli Coverage Results" MODIFIED="1752726314003" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="" />
   </component>
 </project>

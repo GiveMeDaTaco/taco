@@ -68,14 +68,12 @@ class ConditionsConfig(BaseModel):
         # main should not have any segments
         if self.main.segments:
             raise ValueError("'main' conditions may not include segments; only BA checks are allowed")
-        # Process each channel: assign names and require at least one segment
+        # Process each channel: assign names for BA filters and optional segments
         for channel, tmpl in self.channels.items():
             # BA filters for channel
             for idx, chk in enumerate(tmpl.BA, start=1):
                 chk.name = f"{channel}_BA_{idx}"
-            # segments for channel
-            if not tmpl.segments:
-                raise ValueError(f"Channel '{channel}' must define at least one segment alongside BA filters")
+            # segments for channel (optional)
             for seg_name, checks in tmpl.segments.items():
                 for idx, chk in enumerate(checks, start=1):
                     chk.name = f"{channel}_{seg_name}_{idx}"
@@ -84,7 +82,7 @@ class ConditionsConfig(BaseModel):
 class TableConfig(BaseModel):
     name: str
     alias: str
-    sql: Optional[str] # Made optional as it might not always be used
+    sql: Optional[str] = None  # Made optional as it might not always be used
     join_type: Optional[str]
     join_conditions: Optional[str]
     where_conditions: Optional[str]
@@ -147,13 +145,20 @@ class OutputChannelConfig(BaseModel):
     unique_on: Optional[List[str]] = []
 
     @model_validator(mode='after')
-    def check_unique_on_are_in_columns(self) -> 'OutputChannelConfig':
+    def check_unique_on_are_in_columns(cls, self) -> 'OutputChannelConfig':  # type: ignore[name-defined]
+        """
+        Ensure that simple unique_on column names exist in the output columns.
+        If the unique_on element contains a dot, assume it's a qualified identifier and skip validation.
+        """
         if self.unique_on:
-            if not set(self.unique_on).issubset(set(self.columns)):
-                missing = set(self.unique_on) - set(self.columns)
-                raise ValueError(
-                    f"'unique_on' columns {missing} are not present in the selected 'columns'."
-                )
+            # If all unique_on entries are unqualified (no dot), enforce subset
+            simple_keys = [u for u in self.unique_on if '.' not in u]
+            if simple_keys:
+                missing = set(simple_keys) - set(self.columns)
+                if missing:
+                    raise ValueError(
+                        f"'unique_on' columns {missing} are not present in the selected 'columns'."
+                    )
         return self
 
 class OutputConfig(BaseModel):
@@ -174,10 +179,13 @@ class DatabaseConfig(BaseModel):
 
 class AppConfig(BaseModel):
     """
-    Top-level application configuration, including offer code for CLI display.
+    Top-level application configuration, including offer code and campaign metadata.
     """
     # Offer code displayed in CLI progress bar (defaults to 'Running')
     offer_code: str = "Running"
+    # Campaign metadata for waterfall report header
+    campaign_planner: str = ""
+    lead: str = ""
     logging: LoggingConfig
     database: DatabaseConfig
     eligibility: EligibilityConfig

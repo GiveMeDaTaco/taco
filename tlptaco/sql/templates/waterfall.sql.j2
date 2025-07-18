@@ -1,20 +1,153 @@
--- Jinja2 template for waterfall flags table
--- Context:
---   flags_table: name of the aggregated max-flags table
---   eligibility_table: source eligibility table name
---   unique_identifiers: list of identifiers with alias (e.g. ['a.col', 'b.col'])
---   unique_without_aliases: list of column names only
---   check_columns: list of check column names (e.g. ['main_BA_1', 'ch_T1_2', ...])
-CREATE TABLE {{ flags_table }} AS (
+-- Jinja2 Template: waterfall.sql.j2
+-- Purpose: Unified waterfall report with base/channel BA segments and non-BA bucket segments, including regain metric.
+{%- if mode == 'standard' %}
+  {# Combine BA checks with all non-BA segment checks for flag columns #}
+  {%- set ns = namespace(all_checks=check_columns) %}
+  {%- for seg in segments %}
+    {%- set ns.all_checks = ns.all_checks + seg.checks %}
+  {%- endfor %}
+WITH base_population AS (
+    SELECT *
+    FROM {{ eligibility_table }} c
+    {%- if pre_filter %}
+    WHERE {{ pre_filter }}
+    {%- endif %}
+),
+flags AS (
     SELECT
     {%- for uid in unique_identifiers %}
-        {{ uid }}{{ "," if not loop.last }}
+        {{ uid.split('.')[-1] }}{% if not loop.last or ns.all_checks %}, {% endif %}
     {%- endfor %}
-    {%- if check_columns %},
-    {%- for col in check_columns %}
-        MAX({{ col }}) AS max_{{ col }}{{ "," if not loop.last }}
+    {%- for col in ns.all_checks %}
+        {{ col }}{% if not loop.last %}, {% endif %}
     {%- endfor %}
-    {%- endif %}
-    FROM {{ eligibility_table }}
-    GROUP BY {{ unique_without_aliases|join(', ') }}
-) WITH DATA PRIMARY INDEX ({{ unique_without_aliases|join(', ') }});
+    FROM base_population
+)
+SELECT
+  stat_name,
+  check_name,
+  cntr
+FROM (
+    -- initial population count
+    SELECT
+      'initial_population' AS stat_name,
+      'Total' AS check_name,
+      COUNT(*) AS cntr
+    FROM base_population
+
+    UNION ALL
+
+    -- standard waterfall parts (unique, incremental, remaining, cumulative)
+    {%- for part in ['unique_drops', 'incremental_drops', 'remaining', 'cumulative_drops'] %}
+    SELECT
+      '{{ part }}' AS stat_name,
+      check_name,
+      cntr
+    FROM (
+        {%- for col in ns.all_checks %}
+        SELECT
+          '{{ col }}' AS check_name,
+          {%- if part == 'unique_drops' -%}
+            SUM(CASE WHEN {{ col }} = 0 THEN 1 ELSE 0 END)
+            {%- elif part == 'incremental_drops' -%}
+            SUM(CASE WHEN {{ col }} = 0{%- for prev in ns.all_checks[:loop.index0] %} AND {{ prev }} = 1{%- endfor %} THEN 1 ELSE 0 END)
+          {%- elif part == 'remaining' -%}
+            SUM(CASE WHEN {{ col }} = 1{%- for prev in ns.all_checks[:loop.index0] %} AND {{ prev }} = 1{%- endfor %} THEN 1 ELSE 0 END)
+          {%- elif part == 'cumulative_drops' -%}
+            COUNT(*) - SUM(CASE WHEN {{ col }} = 1{%- for prev in ns.all_checks[:loop.index0] %} AND {{ prev }} = 1{%- endfor %} THEN 1 ELSE 0 END)
+          {%- endif %} AS cntr
+        FROM flags
+        {% if not loop.last %}UNION ALL{% endif %}
+        {% endfor %}
+    ) q
+    {% if not loop.last %}
+    UNION ALL
+    {% endif %}
+    {%- endfor %}
+
+    UNION ALL
+
+    -- regain metric: rows regained if only this check failed (others passed) and segments condition holds
+    SELECT
+      'regain' AS stat_name,
+      check_name,
+      cntr
+    FROM (
+      {%- for col in ns.all_checks %}
+      SELECT
+        '{{ col }}' AS check_name,
+        SUM(CASE WHEN {{ col }} = 0{%- for prev in ns.all_checks if prev != col %} AND {{ prev }} = 1{%- endfor %}
+            {%- if segments %}
+            AND (
+              {%- for seg in segments %}
+                ({% for chk in seg.checks %}{{ chk }} = 1{%- if not loop.last %} OR {% endif %}{% endfor %})
+                {%- if not loop.last %} OR {% endif %}
+              {%- endfor %}
+            )
+            {%- endif %}
+        THEN 1 ELSE 0 END) AS cntr
+      FROM flags
+      {% if not loop.last %}UNION ALL{% endif %}
+      {% endfor %}
+) r
+) metrics;
+{%- elif mode == 'segments' %}
+{%- for segment in segments %}
+-- Records claimed for {{ segment.name }}
+SELECT
+  '{{ segment.name }}' AS section,
+  'Records Claimed' AS stat_name,
+  CAST(NULL AS VARCHAR(64)) AS check_name,
+  COUNT(*) AS cntr
+FROM {{ eligibility_table }} c
+WHERE {{ pre_filter }}
+{%- for prev in segments[:loop.index0] %}
+  AND NOT ( {% for chk in prev.checks %}c.{{ chk }} = 1{% if not loop.last %} OR {% endif %}{% endfor %} )
+{%- endfor %}
+
+UNION ALL
+
+-- Detailed waterfall breakdown and regain for {{ segment.name }}
+SELECT
+  '{{ segment.name }}' AS section,
+  stat_name,
+  check_name,
+  cntr
+FROM (
+  {%- set parts = ['unique_drops','incremental_drops','remaining','cumulative_drops','regain'] %}
+  {%- for part in parts %}
+    {%- set part_loop = loop %}
+    {%- for chk in segment.checks %}
+      SELECT
+        '{{ part }}' AS stat_name,
+        '{{ chk }}' AS check_name,
+        {%- if part == 'unique_drops' -%}
+          SUM(CASE WHEN c.{{ chk }} = 0 THEN 1 ELSE 0 END)
+        {%- elif part == 'incremental_drops' -%}
+          SUM(CASE WHEN c.{{ chk }} = 0{% for prev in segment.checks[:loop.index0] %} AND c.{{ prev }} = 1{% endfor %} THEN 1 ELSE 0 END)
+        {%- elif part == 'remaining' -%}
+          SUM(CASE WHEN c.{{ chk }} = 1{% for prev in segment.checks[:loop.index0] %} AND c.{{ prev }} = 1{% endfor %} THEN 1 ELSE 0 END)
+        {%- elif part == 'cumulative_drops' -%}
+          COUNT(*) - SUM(CASE WHEN c.{{ chk }} = 1{% for prev in segment.checks[:loop.index0] %} AND c.{{ prev }} = 1{% endfor %} THEN 1 ELSE 0 END)
+        {%- elif part == 'regain' -%}
+          SUM(CASE WHEN c.{{ chk }} = 0{% for prev in segment.checks if prev != chk %} AND c.{{ prev }} = 1{% endfor %}
+            {%- for later in segments[loop.index+1:] %}
+              AND NOT ( {% for lchk in later.checks %}c.{{ lchk }} = 1{% if not loop.last %} OR {% endif %}{% endfor %} )
+            {%- endfor %}
+          THEN 1 ELSE 0 END)
+        {%- endif %} AS cntr
+      FROM {{ eligibility_table }} c
+      WHERE {{ pre_filter }}
+        {%- for prev in segments[:loop.index0] %}
+          AND NOT ( {% for chk in prev.checks %}c.{{ chk }} = 1{% if not loop.last %} OR {% endif %}{% endfor %} )
+        {%- endfor %}
+      GROUP BY 1,2
+      {%- if not (part_loop.last and loop.last) %}
+      UNION ALL
+      {%- endif %}
+    {%- endfor %}
+  {%- endfor %}
+) q
+;
+{%- endfor %}
+{%- endif %}

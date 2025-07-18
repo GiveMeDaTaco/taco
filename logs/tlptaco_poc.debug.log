@@ -1,0 +1,2808 @@
+ℹ️ [22:23:46] root INFO: Calculating the number of steps for the eligibility run.
+ℹ️ [22:23:46] root INFO: No cached SQL found. Generating new SQL statements.
+ℹ️ [22:23:47] root INFO: Calculation complete: 3 steps.
+ℹ️ [22:23:47] root INFO: Calculating the number of waterfall steps.
+ℹ️ [22:23:47] root INFO: No cached steps found. Preparing waterfall groups and SQL.
+ℹ️ [22:23:47] root INFO: Calculation complete: 3 steps (reports).
+ℹ️ [22:23:47] root INFO: Calculating the number of output steps.
+ℹ️ [22:23:47] root INFO: No cached steps found. Preparing output jobs and SQL.
+ℹ️ [22:23:47] root INFO: Preparing logic for channel 'email'
+ℹ️ [22:23:47] root INFO: Preparing logic for channel 'sms'
+ℹ️ [22:23:47] root INFO: Preparing logic for channel 'push'
+ℹ️ [22:23:47] root INFO: Calculation complete: 3 steps (files).
+ℹ️ [22:23:47] root INFO: Using cached SQL statements.
+ℹ️ [22:23:47] root INFO: Dropping existing table eligibility_poc
+ℹ️ [22:23:47] root INFO: Executing SQL statement
+🐛 [22:23:47] root DEBUG: DROP TABLE eligibility_poc;
+ℹ️ [22:23:59] root INFO: No existing eligibility table to drop
+ℹ️ [22:23:59] root INFO: Executing eligibility SQL statement
+ℹ️ [22:23:59] root INFO: Executing SQL statement
+🐛 [22:23:59] root DEBUG: -- Jinja2 template for eligibility SQL
+
+-- Context:
+-- eligibility_table: name of final eligibility table
+-- unique_identifiers: list of identifiers with alias (e.g. ['a.col', 'b.col'])
+-- unique_without_aliases: list of column names only (e.g. ['col'])
+-- checks: list of dicts {name: column_name, sql: expression}
+-- tables: list of dicts {name, alias, join_type, join_conditions}
+-- where_clauses: list of strings
+
+CREATE TABLE eligibility_poc AS (
+SELECT
+c.customer_id,
+a.account_id,
+r.region_id,
+s.segment_id,
+CASE WHEN c.status = 'Active' THEN 1 ELSE 0 END AS main_BA_1,
+CASE WHEN a.account_id IS NOT NULL THEN 1 ELSE 0 END AS main_BA_2,
+CASE WHEN c.status = 'Active' THEN 1 ELSE 0 END AS email_BA_1,
+CASE WHEN s.segment_flag = 'Promo1' THEN 1 ELSE 0 END AS email_promo_1,
+CASE WHEN s.segment_flag = 'Promo2' THEN 1 ELSE 0 END AS email_promo_2,
+CASE WHEN s.segment_flag IN ('FlagA','FlagB') THEN 1 ELSE 0 END AS email_loyalty_1,
+CASE WHEN a.acct_type = 'Savings' THEN 1 ELSE 0 END AS sms_BA_1,
+CASE WHEN s.segment_flag = 'HighTx' THEN 1 ELSE 0 END AS sms_tx_1,
+CASE WHEN s.segment_flag = 'LowTx' THEN 1 ELSE 0 END AS sms_tx_2,
+CASE WHEN s.segment_flag IN ('FlagA','FlagB') THEN 1 ELSE 0 END AS sms_rfm_1,
+CASE WHEN s.segment_flag = 'PromoA' THEN 1 ELSE 0 END AS push_promotions_1,
+CASE WHEN s.segment_flag = 'PromoB' THEN 1 ELSE 0 END AS push_promotions_2,
+CASE WHEN s.segment_flag IN ('FlagA','FlagB') THEN 1 ELSE 0 END AS push_surveys_1
+FROM customers c
+LEFT JOIN accounts a
+ON a.customer_id = c.customer_id
+LEFT JOIN regions r
+ON r.customer_id = c.customer_id
+LEFT JOIN segments s
+ON s.customer_id = c.customer_id
+) WITH DATA PRIMARY INDEX prindx (customer_id, account_id, region_id, segment_id)
+ℹ️ [22:25:15] root INFO: Calculating the number of steps for the eligibility run.
+ℹ️ [22:25:15] root INFO: No cached SQL found. Generating new SQL statements.
+ℹ️ [22:25:15] root INFO: Calculation complete: 3 steps.
+ℹ️ [22:25:15] root INFO: Calculating the number of waterfall steps.
+ℹ️ [22:25:15] root INFO: No cached steps found. Preparing waterfall groups and SQL.
+ℹ️ [22:25:15] root INFO: Calculation complete: 3 steps (reports).
+ℹ️ [22:25:15] root INFO: Calculating the number of output steps.
+ℹ️ [22:25:15] root INFO: No cached steps found. Preparing output jobs and SQL.
+ℹ️ [22:25:15] root INFO: Preparing logic for channel 'email'
+ℹ️ [22:25:15] root INFO: Preparing logic for channel 'sms'
+ℹ️ [22:25:15] root INFO: Preparing logic for channel 'push'
+ℹ️ [22:25:15] root INFO: Calculation complete: 3 steps (files).
+ℹ️ [22:25:15] root INFO: Using cached SQL statements.
+ℹ️ [22:25:15] root INFO: Dropping existing table eligibility_poc
+ℹ️ [22:25:15] root INFO: Executing SQL statement
+🐛 [22:25:15] root DEBUG: DROP TABLE eligibility_poc;
+ℹ️ [22:25:16] root INFO: SQL execution finished in 1.30s
+ℹ️ [22:25:16] root INFO: Executing eligibility SQL statement
+ℹ️ [22:25:16] root INFO: Executing SQL statement
+🐛 [22:25:16] root DEBUG: -- Jinja2 template for eligibility SQL
+
+-- Context:
+-- eligibility_table: name of final eligibility table
+-- unique_identifiers: list of identifiers with alias (e.g. ['a.col', 'b.col'])
+-- unique_without_aliases: list of column names only (e.g. ['col'])
+-- checks: list of dicts {name: column_name, sql: expression}
+-- tables: list of dicts {name, alias, join_type, join_conditions}
+-- where_clauses: list of strings
+
+CREATE TABLE eligibility_poc AS (
+SELECT
+c.customer_id,
+a.account_id,
+r.region_id,
+s.segment_id,
+CASE WHEN c.status = 'Active' THEN 1 ELSE 0 END AS main_BA_1,
+CASE WHEN a.account_id IS NOT NULL THEN 1 ELSE 0 END AS main_BA_2,
+CASE WHEN c.status = 'Active' THEN 1 ELSE 0 END AS email_BA_1,
+CASE WHEN s.segment_flag = 'Promo1' THEN 1 ELSE 0 END AS email_promo_1,
+CASE WHEN s.segment_flag = 'Promo2' THEN 1 ELSE 0 END AS email_promo_2,
+CASE WHEN s.segment_flag IN ('FlagA','FlagB') THEN 1 ELSE 0 END AS email_loyalty_1,
+CASE WHEN a.acct_type = 'Savings' THEN 1 ELSE 0 END AS sms_BA_1,
+CASE WHEN s.segment_flag = 'HighTx' THEN 1 ELSE 0 END AS sms_tx_1,
+CASE WHEN s.segment_flag = 'LowTx' THEN 1 ELSE 0 END AS sms_tx_2,
+CASE WHEN s.segment_flag IN ('FlagA','FlagB') THEN 1 ELSE 0 END AS sms_rfm_1,
+CASE WHEN s.segment_flag = 'PromoA' THEN 1 ELSE 0 END AS push_promotions_1,
+CASE WHEN s.segment_flag = 'PromoB' THEN 1 ELSE 0 END AS push_promotions_2,
+CASE WHEN s.segment_flag IN ('FlagA','FlagB') THEN 1 ELSE 0 END AS push_surveys_1
+FROM customers c
+LEFT JOIN accounts a
+ON a.customer_id = c.customer_id
+LEFT JOIN regions r
+ON r.customer_id = c.customer_id
+LEFT JOIN segments s
+ON s.customer_id = c.customer_id
+) WITH DATA PRIMARY INDEX prindx (customer_id, account_id, region_id, segment_id)
+ℹ️ [22:25:17] root INFO: SQL execution finished in 1.13s
+ℹ️ [22:25:18] root INFO: Executing eligibility SQL statement
+ℹ️ [22:25:18] root INFO: Executing SQL statement
+🐛 [22:25:18] root DEBUG: 
+
+-- MODIFIED: Collect stats only on the primary index for robustness.
+COLLECT STATISTICS INDEX prindx ON eligibility_poc
+ℹ️ [22:25:18] root INFO: SQL execution finished in 0.17s
+ℹ️ [22:25:18] root INFO: Using cached waterfall steps.
+ℹ️ [22:25:18] root INFO: Processing waterfall grouping 'customer_id'
+ℹ️ [22:25:18] root INFO: Fetching data to DataFrame
+🐛 [22:25:18] root DEBUG: -- Jinja2 Template: waterfall.sql.j2
+-- Purpose: Unified waterfall report with base/channel BA segments and non-BA bucket segments, including regain metric.
+  
+WITH base_population AS (
+    SELECT *
+    FROM eligibility_poc c
+),
+flags AS (
+    SELECT
+        customer_id, 
+        main_BA_1, 
+        main_BA_2
+    FROM base_population
+)
+SELECT
+  stat_name,
+  check_name,
+  cntr
+FROM (
+    -- initial population count
+    SELECT
+      'initial_population' AS stat_name,
+      'Total' AS check_name,
+      COUNT(*) AS cntr
+    FROM base_population
+
+    UNION ALL
+
+    -- standard waterfall parts (unique, incremental, remaining, cumulative)
+    SELECT
+      'unique_drops' AS stat_name,
+      check_name,
+      cntr
+    FROM (
+        SELECT
+          'main_BA_1' AS check_name,SUM(CASE WHEN main_BA_1 = 0 THEN 1 ELSE 0 END) AS cntr
+        FROM flags
+        UNION ALL
+        
+        SELECT
+          'main_BA_2' AS check_name,SUM(CASE WHEN main_BA_2 = 0 THEN 1 ELSE 0 END) AS cntr
+        FROM flags
+        
+        
+    ) q
+    
+    UNION ALL
+    
+    SELECT
+      'incremental_drops' AS stat_name,
+      check_name,
+      cntr
+    FROM (
+        SELECT
+          'main_BA_1' AS check_name,SUM(CASE WHEN main_BA_1 = 0 THEN 1 ELSE 0 END) AS cntr
+        FROM flags
+        UNION ALL
+        
+        SELECT
+          'main_BA_2' AS check_name,SUM(CASE WHEN main_BA_2 = 0 AND main_BA_1 = 1 THEN 1 ELSE 0 END) AS cntr
+        FROM flags
+        
+        
+    ) q
+    
+    UNION ALL
+    
+    SELECT
+      'remaining' AS stat_name,
+      check_name,
+      cntr
+    FROM (
+        SELECT
+          'main_BA_1' AS check_name,SUM(CASE WHEN main_BA_1 = 1 THEN 1 ELSE 0 END) AS cntr
+        FROM flags
+        UNION ALL
+        
+        SELECT
+          'main_BA_2' AS check_name,SUM(CASE WHEN main_BA_2 = 1 AND main_BA_1 = 1 THEN 1 ELSE 0 END) AS cntr
+        FROM flags
+        
+        
+    ) q
+    
+    UNION ALL
+    
+    SELECT
+      'cumulative_drops' AS stat_name,
+      check_name,
+      cntr
+    FROM (
+        SELECT
+          'main_BA_1' AS check_name,COUNT(*) - SUM(CASE WHEN main_BA_1 = 1 THEN 1 ELSE 0 END) AS cntr
+        FROM flags
+        UNION ALL
+        
+        SELECT
+          'main_BA_2' AS check_name,COUNT(*) - SUM(CASE WHEN main_BA_2 = 1 AND main_BA_1 = 1 THEN 1 ELSE 0 END) AS cntr
+        FROM flags
+        
+        
+    ) q
+    
+
+    UNION ALL
+
+    -- regain metric: rows regained if only this check failed (others passed) and segments condition holds
+    SELECT
+      'regain' AS stat_name,
+      check_name,
+      cntr
+    FROM (
+      SELECT
+        'main_BA_1' AS check_name,
+        SUM(CASE WHEN main_BA_1 = 0 AND main_BA_2 = 1
+        THEN 1 ELSE 0 END) AS cntr
+      FROM flags
+      UNION ALL
+      
+      SELECT
+        'main_BA_2' AS check_name,
+        SUM(CASE WHEN main_BA_2 = 0 AND main_BA_1 = 1
+        THEN 1 ELSE 0 END) AS cntr
+      FROM flags
+      
+      
+) r
+) metrics;
+ℹ️ [22:25:18] root INFO: Fetched DataFrame with 11 rows and 3 columns in 0.55s
+ℹ️ [22:25:18] root INFO: Fetching data to DataFrame
+🐛 [22:25:18] root DEBUG: -- Jinja2 Template: waterfall.sql.j2
+-- Purpose: Unified waterfall report with base/channel BA segments and non-BA bucket segments, including regain metric.
+  
+WITH base_population AS (
+    SELECT *
+    FROM eligibility_poc c
+    WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1)
+),
+flags AS (
+    SELECT
+        customer_id, 
+        email_BA_1, 
+        email_loyalty_1, 
+        email_promo_1, 
+        email_promo_2
+    FROM base_population
+)
+SELECT
+  stat_name,
+  check_name,
+  cntr
+FROM (
+    -- initial population count
+    SELECT
+      'initial_population' AS stat_name,
+      'Total' AS check_name,
+      COUNT(*) AS cntr
+    FROM base_population
+
+    UNION ALL
+
+    -- standard waterfall parts (unique, incremental, remaining, cumulative)
+    SELECT
+      'unique_drops' AS stat_name,
+      check_name,
+      cntr
+    FROM (
+        SELECT
+          'email_BA_1' AS check_name,SUM(CASE WHEN email_BA_1 = 0 THEN 1 ELSE 0 END) AS cntr
+        FROM flags
+        
+        
+    ) q
+    
+    UNION ALL
+    
+    SELECT
+      'incremental_drops' AS stat_name,
+      check_name,
+      cntr
+    FROM (
+        SELECT
+          'email_BA_1' AS check_name,SUM(CASE WHEN email_BA_1 = 0 THEN 1 ELSE 0 END) AS cntr
+        FROM flags
+        
+        
+    ) q
+    
+    UNION ALL
+    
+    SELECT
+      'remaining' AS stat_name,
+      check_name,
+      cntr
+    FROM (
+        SELECT
+          'email_BA_1' AS check_name,SUM(CASE WHEN email_BA_1 = 1 THEN 1 ELSE 0 END) AS cntr
+        FROM flags
+        
+        
+    ) q
+    
+    UNION ALL
+    
+    SELECT
+      'cumulative_drops' AS stat_name,
+      check_name,
+      cntr
+    FROM (
+        SELECT
+          'email_BA_1' AS check_name,COUNT(*) - SUM(CASE WHEN email_BA_1 = 1 THEN 1 ELSE 0 END) AS cntr
+        FROM flags
+        
+        
+    ) q
+    
+
+    UNION ALL
+
+    -- regain metric: rows regained if only this check failed (others passed) and segments condition holds
+    SELECT
+      'regain' AS stat_name,
+      check_name,
+      cntr
+    FROM (
+      SELECT
+        'email_BA_1' AS check_name,
+        SUM(CASE WHEN email_BA_1 = 0
+            AND (
+                (email_loyalty_1 = 1) OR 
+                (email_promo_1 = 1 OR email_promo_2 = 1)
+            )
+        THEN 1 ELSE 0 END) AS cntr
+      FROM flags
+      
+      
+) r
+) metrics;
+ℹ️ [22:25:19] root INFO: Fetched DataFrame with 6 rows and 3 columns in 0.25s
+ℹ️ [22:25:19] root INFO: Fetching data to DataFrame
+🐛 [22:25:19] root DEBUG: -- Jinja2 Template: waterfall.sql.j2
+-- Purpose: Unified waterfall report with base/channel BA segments and non-BA bucket segments, including regain metric.
+-- Records claimed for email - loyalty
+SELECT
+  'email - loyalty' AS section,
+  'Records Claimed' AS stat_name,
+  CAST(NULL AS VARCHAR(64)) AS check_name,
+  COUNT(*) AS cntr
+FROM eligibility_poc c
+WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+
+UNION ALL
+
+-- Detailed waterfall breakdown and regain for email - loyalty
+SELECT
+  'email - loyalty' AS section,
+  stat_name,
+  check_name,
+  cntr
+FROM (
+      SELECT
+        'unique_drops' AS stat_name,
+        'email_loyalty_1' AS check_name,SUM(CASE WHEN c.email_loyalty_1 = 0 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'incremental_drops' AS stat_name,
+        'email_loyalty_1' AS check_name,SUM(CASE WHEN c.email_loyalty_1 = 0 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'remaining' AS stat_name,
+        'email_loyalty_1' AS check_name,SUM(CASE WHEN c.email_loyalty_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'cumulative_drops' AS stat_name,
+        'email_loyalty_1' AS check_name,COUNT(*) - SUM(CASE WHEN c.email_loyalty_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'regain' AS stat_name,
+        'email_loyalty_1' AS check_name,SUM(CASE WHEN c.email_loyalty_1 = 0
+          THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+      GROUP BY 1,2
+) q
+;
+-- Records claimed for email - promo
+SELECT
+  'email - promo' AS section,
+  'Records Claimed' AS stat_name,
+  CAST(NULL AS VARCHAR(64)) AS check_name,
+  COUNT(*) AS cntr
+FROM eligibility_poc c
+WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+  AND NOT ( c.email_loyalty_1 = 1 )
+
+UNION ALL
+
+-- Detailed waterfall breakdown and regain for email - promo
+SELECT
+  'email - promo' AS section,
+  stat_name,
+  check_name,
+  cntr
+FROM (
+      SELECT
+        'unique_drops' AS stat_name,
+        'email_promo_1' AS check_name,SUM(CASE WHEN c.email_promo_1 = 0 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'unique_drops' AS stat_name,
+        'email_promo_2' AS check_name,SUM(CASE WHEN c.email_promo_2 = 0 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+          AND NOT ( c.email_loyalty_1 = 1 )
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'incremental_drops' AS stat_name,
+        'email_promo_1' AS check_name,SUM(CASE WHEN c.email_promo_1 = 0 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'incremental_drops' AS stat_name,
+        'email_promo_2' AS check_name,SUM(CASE WHEN c.email_promo_2 = 0 AND c.email_promo_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+          AND NOT ( c.email_loyalty_1 = 1 )
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'remaining' AS stat_name,
+        'email_promo_1' AS check_name,SUM(CASE WHEN c.email_promo_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'remaining' AS stat_name,
+        'email_promo_2' AS check_name,SUM(CASE WHEN c.email_promo_2 = 1 AND c.email_promo_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+          AND NOT ( c.email_loyalty_1 = 1 )
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'cumulative_drops' AS stat_name,
+        'email_promo_1' AS check_name,COUNT(*) - SUM(CASE WHEN c.email_promo_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'cumulative_drops' AS stat_name,
+        'email_promo_2' AS check_name,COUNT(*) - SUM(CASE WHEN c.email_promo_2 = 1 AND c.email_promo_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+          AND NOT ( c.email_loyalty_1 = 1 )
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'regain' AS stat_name,
+        'email_promo_1' AS check_name,SUM(CASE WHEN c.email_promo_1 = 0 AND c.email_promo_2 = 1
+          THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'regain' AS stat_name,
+        'email_promo_2' AS check_name,SUM(CASE WHEN c.email_promo_2 = 0 AND c.email_promo_1 = 1
+          THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+          AND NOT ( c.email_loyalty_1 = 1 )
+      GROUP BY 1,2
+) q
+;
+ℹ️ [22:25:19] root INFO: Fetched DataFrame with 6 rows and 4 columns in 0.57s
+ℹ️ [22:25:19] root INFO: Fetching data to DataFrame
+🐛 [22:25:19] root DEBUG: -- Jinja2 Template: waterfall.sql.j2
+-- Purpose: Unified waterfall report with base/channel BA segments and non-BA bucket segments, including regain metric.
+  
+WITH base_population AS (
+    SELECT *
+    FROM eligibility_poc c
+    WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1)
+),
+flags AS (
+    SELECT
+        customer_id, 
+        sms_BA_1, 
+        sms_rfm_1, 
+        sms_tx_1, 
+        sms_tx_2
+    FROM base_population
+)
+SELECT
+  stat_name,
+  check_name,
+  cntr
+FROM (
+    -- initial population count
+    SELECT
+      'initial_population' AS stat_name,
+      'Total' AS check_name,
+      COUNT(*) AS cntr
+    FROM base_population
+
+    UNION ALL
+
+    -- standard waterfall parts (unique, incremental, remaining, cumulative)
+    SELECT
+      'unique_drops' AS stat_name,
+      check_name,
+      cntr
+    FROM (
+        SELECT
+          'sms_BA_1' AS check_name,SUM(CASE WHEN sms_BA_1 = 0 THEN 1 ELSE 0 END) AS cntr
+        FROM flags
+        
+        
+    ) q
+    
+    UNION ALL
+    
+    SELECT
+      'incremental_drops' AS stat_name,
+      check_name,
+      cntr
+    FROM (
+        SELECT
+          'sms_BA_1' AS check_name,SUM(CASE WHEN sms_BA_1 = 0 THEN 1 ELSE 0 END) AS cntr
+        FROM flags
+        
+        
+    ) q
+    
+    UNION ALL
+    
+    SELECT
+      'remaining' AS stat_name,
+      check_name,
+      cntr
+    FROM (
+        SELECT
+          'sms_BA_1' AS check_name,SUM(CASE WHEN sms_BA_1 = 1 THEN 1 ELSE 0 END) AS cntr
+        FROM flags
+        
+        
+    ) q
+    
+    UNION ALL
+    
+    SELECT
+      'cumulative_drops' AS stat_name,
+      check_name,
+      cntr
+    FROM (
+        SELECT
+          'sms_BA_1' AS check_name,COUNT(*) - SUM(CASE WHEN sms_BA_1 = 1 THEN 1 ELSE 0 END) AS cntr
+        FROM flags
+        
+        
+    ) q
+    
+
+    UNION ALL
+
+    -- regain metric: rows regained if only this check failed (others passed) and segments condition holds
+    SELECT
+      'regain' AS stat_name,
+      check_name,
+      cntr
+    FROM (
+      SELECT
+        'sms_BA_1' AS check_name,
+        SUM(CASE WHEN sms_BA_1 = 0
+            AND (
+                (sms_rfm_1 = 1) OR 
+                (sms_tx_1 = 1 OR sms_tx_2 = 1)
+            )
+        THEN 1 ELSE 0 END) AS cntr
+      FROM flags
+      
+      
+) r
+) metrics;
+ℹ️ [22:25:19] root INFO: Fetched DataFrame with 6 rows and 3 columns in 0.31s
+ℹ️ [22:25:19] root INFO: Fetching data to DataFrame
+🐛 [22:25:19] root DEBUG: -- Jinja2 Template: waterfall.sql.j2
+-- Purpose: Unified waterfall report with base/channel BA segments and non-BA bucket segments, including regain metric.
+-- Records claimed for sms - rfm
+SELECT
+  'sms - rfm' AS section,
+  'Records Claimed' AS stat_name,
+  CAST(NULL AS VARCHAR(64)) AS check_name,
+  COUNT(*) AS cntr
+FROM eligibility_poc c
+WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+
+UNION ALL
+
+-- Detailed waterfall breakdown and regain for sms - rfm
+SELECT
+  'sms - rfm' AS section,
+  stat_name,
+  check_name,
+  cntr
+FROM (
+      SELECT
+        'unique_drops' AS stat_name,
+        'sms_rfm_1' AS check_name,SUM(CASE WHEN c.sms_rfm_1 = 0 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'incremental_drops' AS stat_name,
+        'sms_rfm_1' AS check_name,SUM(CASE WHEN c.sms_rfm_1 = 0 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'remaining' AS stat_name,
+        'sms_rfm_1' AS check_name,SUM(CASE WHEN c.sms_rfm_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'cumulative_drops' AS stat_name,
+        'sms_rfm_1' AS check_name,COUNT(*) - SUM(CASE WHEN c.sms_rfm_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'regain' AS stat_name,
+        'sms_rfm_1' AS check_name,SUM(CASE WHEN c.sms_rfm_1 = 0
+          THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+      GROUP BY 1,2
+) q
+;
+-- Records claimed for sms - tx
+SELECT
+  'sms - tx' AS section,
+  'Records Claimed' AS stat_name,
+  CAST(NULL AS VARCHAR(64)) AS check_name,
+  COUNT(*) AS cntr
+FROM eligibility_poc c
+WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+  AND NOT ( c.sms_rfm_1 = 1 )
+
+UNION ALL
+
+-- Detailed waterfall breakdown and regain for sms - tx
+SELECT
+  'sms - tx' AS section,
+  stat_name,
+  check_name,
+  cntr
+FROM (
+      SELECT
+        'unique_drops' AS stat_name,
+        'sms_tx_1' AS check_name,SUM(CASE WHEN c.sms_tx_1 = 0 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'unique_drops' AS stat_name,
+        'sms_tx_2' AS check_name,SUM(CASE WHEN c.sms_tx_2 = 0 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+          AND NOT ( c.sms_rfm_1 = 1 )
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'incremental_drops' AS stat_name,
+        'sms_tx_1' AS check_name,SUM(CASE WHEN c.sms_tx_1 = 0 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'incremental_drops' AS stat_name,
+        'sms_tx_2' AS check_name,SUM(CASE WHEN c.sms_tx_2 = 0 AND c.sms_tx_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+          AND NOT ( c.sms_rfm_1 = 1 )
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'remaining' AS stat_name,
+        'sms_tx_1' AS check_name,SUM(CASE WHEN c.sms_tx_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'remaining' AS stat_name,
+        'sms_tx_2' AS check_name,SUM(CASE WHEN c.sms_tx_2 = 1 AND c.sms_tx_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+          AND NOT ( c.sms_rfm_1 = 1 )
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'cumulative_drops' AS stat_name,
+        'sms_tx_1' AS check_name,COUNT(*) - SUM(CASE WHEN c.sms_tx_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'cumulative_drops' AS stat_name,
+        'sms_tx_2' AS check_name,COUNT(*) - SUM(CASE WHEN c.sms_tx_2 = 1 AND c.sms_tx_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+          AND NOT ( c.sms_rfm_1 = 1 )
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'regain' AS stat_name,
+        'sms_tx_1' AS check_name,SUM(CASE WHEN c.sms_tx_1 = 0 AND c.sms_tx_2 = 1
+          THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'regain' AS stat_name,
+        'sms_tx_2' AS check_name,SUM(CASE WHEN c.sms_tx_2 = 0 AND c.sms_tx_1 = 1
+          THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+          AND NOT ( c.sms_rfm_1 = 1 )
+      GROUP BY 1,2
+) q
+;
+ℹ️ [22:25:20] root INFO: Fetched DataFrame with 6 rows and 4 columns in 0.72s
+ℹ️ [22:25:20] root INFO: Fetching data to DataFrame
+🐛 [22:25:20] root DEBUG: -- Jinja2 Template: waterfall.sql.j2
+-- Purpose: Unified waterfall report with base/channel BA segments and non-BA bucket segments, including regain metric.
+-- Records claimed for push - promotions
+SELECT
+  'push - promotions' AS section,
+  'Records Claimed' AS stat_name,
+  CAST(NULL AS VARCHAR(64)) AS check_name,
+  COUNT(*) AS cntr
+FROM eligibility_poc c
+WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+
+UNION ALL
+
+-- Detailed waterfall breakdown and regain for push - promotions
+SELECT
+  'push - promotions' AS section,
+  stat_name,
+  check_name,
+  cntr
+FROM (
+      SELECT
+        'unique_drops' AS stat_name,
+        'push_promotions_1' AS check_name,SUM(CASE WHEN c.push_promotions_1 = 0 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'unique_drops' AS stat_name,
+        'push_promotions_2' AS check_name,SUM(CASE WHEN c.push_promotions_2 = 0 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+          AND NOT ( c.push_promotions_1 = 1 OR c.push_promotions_2 = 1 )
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'incremental_drops' AS stat_name,
+        'push_promotions_1' AS check_name,SUM(CASE WHEN c.push_promotions_1 = 0 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'incremental_drops' AS stat_name,
+        'push_promotions_2' AS check_name,SUM(CASE WHEN c.push_promotions_2 = 0 AND c.push_promotions_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+          AND NOT ( c.push_promotions_1 = 1 OR c.push_promotions_2 = 1 )
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'remaining' AS stat_name,
+        'push_promotions_1' AS check_name,SUM(CASE WHEN c.push_promotions_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'remaining' AS stat_name,
+        'push_promotions_2' AS check_name,SUM(CASE WHEN c.push_promotions_2 = 1 AND c.push_promotions_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+          AND NOT ( c.push_promotions_1 = 1 OR c.push_promotions_2 = 1 )
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'cumulative_drops' AS stat_name,
+        'push_promotions_1' AS check_name,COUNT(*) - SUM(CASE WHEN c.push_promotions_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'cumulative_drops' AS stat_name,
+        'push_promotions_2' AS check_name,COUNT(*) - SUM(CASE WHEN c.push_promotions_2 = 1 AND c.push_promotions_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+          AND NOT ( c.push_promotions_1 = 1 OR c.push_promotions_2 = 1 )
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'regain' AS stat_name,
+        'push_promotions_1' AS check_name,SUM(CASE WHEN c.push_promotions_1 = 0 AND c.push_promotions_2 = 1
+          THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'regain' AS stat_name,
+        'push_promotions_2' AS check_name,SUM(CASE WHEN c.push_promotions_2 = 0 AND c.push_promotions_1 = 1
+          THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+          AND NOT ( c.push_promotions_1 = 1 OR c.push_promotions_2 = 1 )
+      GROUP BY 1,2
+) q
+;
+-- Records claimed for push - surveys
+SELECT
+  'push - surveys' AS section,
+  'Records Claimed' AS stat_name,
+  CAST(NULL AS VARCHAR(64)) AS check_name,
+  COUNT(*) AS cntr
+FROM eligibility_poc c
+WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+  AND NOT ( c.push_promotions_1 = 1 OR c.push_promotions_2 = 1 )
+
+UNION ALL
+
+-- Detailed waterfall breakdown and regain for push - surveys
+SELECT
+  'push - surveys' AS section,
+  stat_name,
+  check_name,
+  cntr
+FROM (
+      SELECT
+        'unique_drops' AS stat_name,
+        'push_surveys_1' AS check_name,SUM(CASE WHEN c.push_surveys_1 = 0 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'incremental_drops' AS stat_name,
+        'push_surveys_1' AS check_name,SUM(CASE WHEN c.push_surveys_1 = 0 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'remaining' AS stat_name,
+        'push_surveys_1' AS check_name,SUM(CASE WHEN c.push_surveys_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'cumulative_drops' AS stat_name,
+        'push_surveys_1' AS check_name,COUNT(*) - SUM(CASE WHEN c.push_surveys_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'regain' AS stat_name,
+        'push_surveys_1' AS check_name,SUM(CASE WHEN c.push_surveys_1 = 0
+          THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+      GROUP BY 1,2
+) q
+;
+ℹ️ [22:25:21] root INFO: Fetched DataFrame with 11 rows and 4 columns in 0.75s
+ℹ️ [22:25:21] root INFO: Waterfall report for 'customer_id' saved to /home/taco/projects/recodeWaterfall/reports/poc/reports/poc/waterfall/waterfall_report_eligibility_poc_customer_id.xlsx
+ℹ️ [22:25:21] root INFO: Processing waterfall grouping 'customer_id_account_id'
+ℹ️ [22:25:21] root INFO: Fetching data to DataFrame
+🐛 [22:25:21] root DEBUG: -- Jinja2 Template: waterfall.sql.j2
+-- Purpose: Unified waterfall report with base/channel BA segments and non-BA bucket segments, including regain metric.
+  
+WITH base_population AS (
+    SELECT *
+    FROM eligibility_poc c
+),
+flags AS (
+    SELECT
+        customer_id, 
+        account_id, 
+        main_BA_1, 
+        main_BA_2
+    FROM base_population
+)
+SELECT
+  stat_name,
+  check_name,
+  cntr
+FROM (
+    -- initial population count
+    SELECT
+      'initial_population' AS stat_name,
+      'Total' AS check_name,
+      COUNT(*) AS cntr
+    FROM base_population
+
+    UNION ALL
+
+    -- standard waterfall parts (unique, incremental, remaining, cumulative)
+    SELECT
+      'unique_drops' AS stat_name,
+      check_name,
+      cntr
+    FROM (
+        SELECT
+          'main_BA_1' AS check_name,SUM(CASE WHEN main_BA_1 = 0 THEN 1 ELSE 0 END) AS cntr
+        FROM flags
+        UNION ALL
+        
+        SELECT
+          'main_BA_2' AS check_name,SUM(CASE WHEN main_BA_2 = 0 THEN 1 ELSE 0 END) AS cntr
+        FROM flags
+        
+        
+    ) q
+    
+    UNION ALL
+    
+    SELECT
+      'incremental_drops' AS stat_name,
+      check_name,
+      cntr
+    FROM (
+        SELECT
+          'main_BA_1' AS check_name,SUM(CASE WHEN main_BA_1 = 0 THEN 1 ELSE 0 END) AS cntr
+        FROM flags
+        UNION ALL
+        
+        SELECT
+          'main_BA_2' AS check_name,SUM(CASE WHEN main_BA_2 = 0 AND main_BA_1 = 1 THEN 1 ELSE 0 END) AS cntr
+        FROM flags
+        
+        
+    ) q
+    
+    UNION ALL
+    
+    SELECT
+      'remaining' AS stat_name,
+      check_name,
+      cntr
+    FROM (
+        SELECT
+          'main_BA_1' AS check_name,SUM(CASE WHEN main_BA_1 = 1 THEN 1 ELSE 0 END) AS cntr
+        FROM flags
+        UNION ALL
+        
+        SELECT
+          'main_BA_2' AS check_name,SUM(CASE WHEN main_BA_2 = 1 AND main_BA_1 = 1 THEN 1 ELSE 0 END) AS cntr
+        FROM flags
+        
+        
+    ) q
+    
+    UNION ALL
+    
+    SELECT
+      'cumulative_drops' AS stat_name,
+      check_name,
+      cntr
+    FROM (
+        SELECT
+          'main_BA_1' AS check_name,COUNT(*) - SUM(CASE WHEN main_BA_1 = 1 THEN 1 ELSE 0 END) AS cntr
+        FROM flags
+        UNION ALL
+        
+        SELECT
+          'main_BA_2' AS check_name,COUNT(*) - SUM(CASE WHEN main_BA_2 = 1 AND main_BA_1 = 1 THEN 1 ELSE 0 END) AS cntr
+        FROM flags
+        
+        
+    ) q
+    
+
+    UNION ALL
+
+    -- regain metric: rows regained if only this check failed (others passed) and segments condition holds
+    SELECT
+      'regain' AS stat_name,
+      check_name,
+      cntr
+    FROM (
+      SELECT
+        'main_BA_1' AS check_name,
+        SUM(CASE WHEN main_BA_1 = 0 AND main_BA_2 = 1
+        THEN 1 ELSE 0 END) AS cntr
+      FROM flags
+      UNION ALL
+      
+      SELECT
+        'main_BA_2' AS check_name,
+        SUM(CASE WHEN main_BA_2 = 0 AND main_BA_1 = 1
+        THEN 1 ELSE 0 END) AS cntr
+      FROM flags
+      
+      
+) r
+) metrics;
+ℹ️ [22:25:22] root INFO: Fetched DataFrame with 11 rows and 3 columns in 0.44s
+ℹ️ [22:25:22] root INFO: Fetching data to DataFrame
+🐛 [22:25:22] root DEBUG: -- Jinja2 Template: waterfall.sql.j2
+-- Purpose: Unified waterfall report with base/channel BA segments and non-BA bucket segments, including regain metric.
+  
+WITH base_population AS (
+    SELECT *
+    FROM eligibility_poc c
+    WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1)
+),
+flags AS (
+    SELECT
+        customer_id, 
+        account_id, 
+        email_BA_1, 
+        email_loyalty_1, 
+        email_promo_1, 
+        email_promo_2
+    FROM base_population
+)
+SELECT
+  stat_name,
+  check_name,
+  cntr
+FROM (
+    -- initial population count
+    SELECT
+      'initial_population' AS stat_name,
+      'Total' AS check_name,
+      COUNT(*) AS cntr
+    FROM base_population
+
+    UNION ALL
+
+    -- standard waterfall parts (unique, incremental, remaining, cumulative)
+    SELECT
+      'unique_drops' AS stat_name,
+      check_name,
+      cntr
+    FROM (
+        SELECT
+          'email_BA_1' AS check_name,SUM(CASE WHEN email_BA_1 = 0 THEN 1 ELSE 0 END) AS cntr
+        FROM flags
+        
+        
+    ) q
+    
+    UNION ALL
+    
+    SELECT
+      'incremental_drops' AS stat_name,
+      check_name,
+      cntr
+    FROM (
+        SELECT
+          'email_BA_1' AS check_name,SUM(CASE WHEN email_BA_1 = 0 THEN 1 ELSE 0 END) AS cntr
+        FROM flags
+        
+        
+    ) q
+    
+    UNION ALL
+    
+    SELECT
+      'remaining' AS stat_name,
+      check_name,
+      cntr
+    FROM (
+        SELECT
+          'email_BA_1' AS check_name,SUM(CASE WHEN email_BA_1 = 1 THEN 1 ELSE 0 END) AS cntr
+        FROM flags
+        
+        
+    ) q
+    
+    UNION ALL
+    
+    SELECT
+      'cumulative_drops' AS stat_name,
+      check_name,
+      cntr
+    FROM (
+        SELECT
+          'email_BA_1' AS check_name,COUNT(*) - SUM(CASE WHEN email_BA_1 = 1 THEN 1 ELSE 0 END) AS cntr
+        FROM flags
+        
+        
+    ) q
+    
+
+    UNION ALL
+
+    -- regain metric: rows regained if only this check failed (others passed) and segments condition holds
+    SELECT
+      'regain' AS stat_name,
+      check_name,
+      cntr
+    FROM (
+      SELECT
+        'email_BA_1' AS check_name,
+        SUM(CASE WHEN email_BA_1 = 0
+            AND (
+                (email_loyalty_1 = 1) OR 
+                (email_promo_1 = 1 OR email_promo_2 = 1)
+            )
+        THEN 1 ELSE 0 END) AS cntr
+      FROM flags
+      
+      
+) r
+) metrics;
+ℹ️ [22:25:22] root INFO: Fetched DataFrame with 6 rows and 3 columns in 0.29s
+ℹ️ [22:25:22] root INFO: Fetching data to DataFrame
+🐛 [22:25:22] root DEBUG: -- Jinja2 Template: waterfall.sql.j2
+-- Purpose: Unified waterfall report with base/channel BA segments and non-BA bucket segments, including regain metric.
+-- Records claimed for email - loyalty
+SELECT
+  'email - loyalty' AS section,
+  'Records Claimed' AS stat_name,
+  CAST(NULL AS VARCHAR(64)) AS check_name,
+  COUNT(*) AS cntr
+FROM eligibility_poc c
+WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+
+UNION ALL
+
+-- Detailed waterfall breakdown and regain for email - loyalty
+SELECT
+  'email - loyalty' AS section,
+  stat_name,
+  check_name,
+  cntr
+FROM (
+      SELECT
+        'unique_drops' AS stat_name,
+        'email_loyalty_1' AS check_name,SUM(CASE WHEN c.email_loyalty_1 = 0 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'incremental_drops' AS stat_name,
+        'email_loyalty_1' AS check_name,SUM(CASE WHEN c.email_loyalty_1 = 0 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'remaining' AS stat_name,
+        'email_loyalty_1' AS check_name,SUM(CASE WHEN c.email_loyalty_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'cumulative_drops' AS stat_name,
+        'email_loyalty_1' AS check_name,COUNT(*) - SUM(CASE WHEN c.email_loyalty_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'regain' AS stat_name,
+        'email_loyalty_1' AS check_name,SUM(CASE WHEN c.email_loyalty_1 = 0
+          THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+      GROUP BY 1,2
+) q
+;
+-- Records claimed for email - promo
+SELECT
+  'email - promo' AS section,
+  'Records Claimed' AS stat_name,
+  CAST(NULL AS VARCHAR(64)) AS check_name,
+  COUNT(*) AS cntr
+FROM eligibility_poc c
+WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+  AND NOT ( c.email_loyalty_1 = 1 )
+
+UNION ALL
+
+-- Detailed waterfall breakdown and regain for email - promo
+SELECT
+  'email - promo' AS section,
+  stat_name,
+  check_name,
+  cntr
+FROM (
+      SELECT
+        'unique_drops' AS stat_name,
+        'email_promo_1' AS check_name,SUM(CASE WHEN c.email_promo_1 = 0 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'unique_drops' AS stat_name,
+        'email_promo_2' AS check_name,SUM(CASE WHEN c.email_promo_2 = 0 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+          AND NOT ( c.email_loyalty_1 = 1 )
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'incremental_drops' AS stat_name,
+        'email_promo_1' AS check_name,SUM(CASE WHEN c.email_promo_1 = 0 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'incremental_drops' AS stat_name,
+        'email_promo_2' AS check_name,SUM(CASE WHEN c.email_promo_2 = 0 AND c.email_promo_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+          AND NOT ( c.email_loyalty_1 = 1 )
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'remaining' AS stat_name,
+        'email_promo_1' AS check_name,SUM(CASE WHEN c.email_promo_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'remaining' AS stat_name,
+        'email_promo_2' AS check_name,SUM(CASE WHEN c.email_promo_2 = 1 AND c.email_promo_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+          AND NOT ( c.email_loyalty_1 = 1 )
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'cumulative_drops' AS stat_name,
+        'email_promo_1' AS check_name,COUNT(*) - SUM(CASE WHEN c.email_promo_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'cumulative_drops' AS stat_name,
+        'email_promo_2' AS check_name,COUNT(*) - SUM(CASE WHEN c.email_promo_2 = 1 AND c.email_promo_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+          AND NOT ( c.email_loyalty_1 = 1 )
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'regain' AS stat_name,
+        'email_promo_1' AS check_name,SUM(CASE WHEN c.email_promo_1 = 0 AND c.email_promo_2 = 1
+          THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'regain' AS stat_name,
+        'email_promo_2' AS check_name,SUM(CASE WHEN c.email_promo_2 = 0 AND c.email_promo_1 = 1
+          THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+          AND NOT ( c.email_loyalty_1 = 1 )
+      GROUP BY 1,2
+) q
+;
+ℹ️ [22:25:22] root INFO: Fetched DataFrame with 6 rows and 4 columns in 0.58s
+ℹ️ [22:25:22] root INFO: Fetching data to DataFrame
+🐛 [22:25:22] root DEBUG: -- Jinja2 Template: waterfall.sql.j2
+-- Purpose: Unified waterfall report with base/channel BA segments and non-BA bucket segments, including regain metric.
+  
+WITH base_population AS (
+    SELECT *
+    FROM eligibility_poc c
+    WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1)
+),
+flags AS (
+    SELECT
+        customer_id, 
+        account_id, 
+        sms_BA_1, 
+        sms_rfm_1, 
+        sms_tx_1, 
+        sms_tx_2
+    FROM base_population
+)
+SELECT
+  stat_name,
+  check_name,
+  cntr
+FROM (
+    -- initial population count
+    SELECT
+      'initial_population' AS stat_name,
+      'Total' AS check_name,
+      COUNT(*) AS cntr
+    FROM base_population
+
+    UNION ALL
+
+    -- standard waterfall parts (unique, incremental, remaining, cumulative)
+    SELECT
+      'unique_drops' AS stat_name,
+      check_name,
+      cntr
+    FROM (
+        SELECT
+          'sms_BA_1' AS check_name,SUM(CASE WHEN sms_BA_1 = 0 THEN 1 ELSE 0 END) AS cntr
+        FROM flags
+        
+        
+    ) q
+    
+    UNION ALL
+    
+    SELECT
+      'incremental_drops' AS stat_name,
+      check_name,
+      cntr
+    FROM (
+        SELECT
+          'sms_BA_1' AS check_name,SUM(CASE WHEN sms_BA_1 = 0 THEN 1 ELSE 0 END) AS cntr
+        FROM flags
+        
+        
+    ) q
+    
+    UNION ALL
+    
+    SELECT
+      'remaining' AS stat_name,
+      check_name,
+      cntr
+    FROM (
+        SELECT
+          'sms_BA_1' AS check_name,SUM(CASE WHEN sms_BA_1 = 1 THEN 1 ELSE 0 END) AS cntr
+        FROM flags
+        
+        
+    ) q
+    
+    UNION ALL
+    
+    SELECT
+      'cumulative_drops' AS stat_name,
+      check_name,
+      cntr
+    FROM (
+        SELECT
+          'sms_BA_1' AS check_name,COUNT(*) - SUM(CASE WHEN sms_BA_1 = 1 THEN 1 ELSE 0 END) AS cntr
+        FROM flags
+        
+        
+    ) q
+    
+
+    UNION ALL
+
+    -- regain metric: rows regained if only this check failed (others passed) and segments condition holds
+    SELECT
+      'regain' AS stat_name,
+      check_name,
+      cntr
+    FROM (
+      SELECT
+        'sms_BA_1' AS check_name,
+        SUM(CASE WHEN sms_BA_1 = 0
+            AND (
+                (sms_rfm_1 = 1) OR 
+                (sms_tx_1 = 1 OR sms_tx_2 = 1)
+            )
+        THEN 1 ELSE 0 END) AS cntr
+      FROM flags
+      
+      
+) r
+) metrics;
+ℹ️ [22:25:23] root INFO: Fetched DataFrame with 6 rows and 3 columns in 0.29s
+ℹ️ [22:25:23] root INFO: Fetching data to DataFrame
+🐛 [22:25:23] root DEBUG: -- Jinja2 Template: waterfall.sql.j2
+-- Purpose: Unified waterfall report with base/channel BA segments and non-BA bucket segments, including regain metric.
+-- Records claimed for sms - rfm
+SELECT
+  'sms - rfm' AS section,
+  'Records Claimed' AS stat_name,
+  CAST(NULL AS VARCHAR(64)) AS check_name,
+  COUNT(*) AS cntr
+FROM eligibility_poc c
+WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+
+UNION ALL
+
+-- Detailed waterfall breakdown and regain for sms - rfm
+SELECT
+  'sms - rfm' AS section,
+  stat_name,
+  check_name,
+  cntr
+FROM (
+      SELECT
+        'unique_drops' AS stat_name,
+        'sms_rfm_1' AS check_name,SUM(CASE WHEN c.sms_rfm_1 = 0 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'incremental_drops' AS stat_name,
+        'sms_rfm_1' AS check_name,SUM(CASE WHEN c.sms_rfm_1 = 0 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'remaining' AS stat_name,
+        'sms_rfm_1' AS check_name,SUM(CASE WHEN c.sms_rfm_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'cumulative_drops' AS stat_name,
+        'sms_rfm_1' AS check_name,COUNT(*) - SUM(CASE WHEN c.sms_rfm_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'regain' AS stat_name,
+        'sms_rfm_1' AS check_name,SUM(CASE WHEN c.sms_rfm_1 = 0
+          THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+      GROUP BY 1,2
+) q
+;
+-- Records claimed for sms - tx
+SELECT
+  'sms - tx' AS section,
+  'Records Claimed' AS stat_name,
+  CAST(NULL AS VARCHAR(64)) AS check_name,
+  COUNT(*) AS cntr
+FROM eligibility_poc c
+WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+  AND NOT ( c.sms_rfm_1 = 1 )
+
+UNION ALL
+
+-- Detailed waterfall breakdown and regain for sms - tx
+SELECT
+  'sms - tx' AS section,
+  stat_name,
+  check_name,
+  cntr
+FROM (
+      SELECT
+        'unique_drops' AS stat_name,
+        'sms_tx_1' AS check_name,SUM(CASE WHEN c.sms_tx_1 = 0 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'unique_drops' AS stat_name,
+        'sms_tx_2' AS check_name,SUM(CASE WHEN c.sms_tx_2 = 0 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+          AND NOT ( c.sms_rfm_1 = 1 )
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'incremental_drops' AS stat_name,
+        'sms_tx_1' AS check_name,SUM(CASE WHEN c.sms_tx_1 = 0 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'incremental_drops' AS stat_name,
+        'sms_tx_2' AS check_name,SUM(CASE WHEN c.sms_tx_2 = 0 AND c.sms_tx_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+          AND NOT ( c.sms_rfm_1 = 1 )
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'remaining' AS stat_name,
+        'sms_tx_1' AS check_name,SUM(CASE WHEN c.sms_tx_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'remaining' AS stat_name,
+        'sms_tx_2' AS check_name,SUM(CASE WHEN c.sms_tx_2 = 1 AND c.sms_tx_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+          AND NOT ( c.sms_rfm_1 = 1 )
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'cumulative_drops' AS stat_name,
+        'sms_tx_1' AS check_name,COUNT(*) - SUM(CASE WHEN c.sms_tx_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'cumulative_drops' AS stat_name,
+        'sms_tx_2' AS check_name,COUNT(*) - SUM(CASE WHEN c.sms_tx_2 = 1 AND c.sms_tx_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+          AND NOT ( c.sms_rfm_1 = 1 )
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'regain' AS stat_name,
+        'sms_tx_1' AS check_name,SUM(CASE WHEN c.sms_tx_1 = 0 AND c.sms_tx_2 = 1
+          THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'regain' AS stat_name,
+        'sms_tx_2' AS check_name,SUM(CASE WHEN c.sms_tx_2 = 0 AND c.sms_tx_1 = 1
+          THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+          AND NOT ( c.sms_rfm_1 = 1 )
+      GROUP BY 1,2
+) q
+;
+ℹ️ [22:25:23] root INFO: Fetched DataFrame with 6 rows and 4 columns in 0.64s
+ℹ️ [22:25:23] root INFO: Fetching data to DataFrame
+🐛 [22:25:23] root DEBUG: -- Jinja2 Template: waterfall.sql.j2
+-- Purpose: Unified waterfall report with base/channel BA segments and non-BA bucket segments, including regain metric.
+-- Records claimed for push - promotions
+SELECT
+  'push - promotions' AS section,
+  'Records Claimed' AS stat_name,
+  CAST(NULL AS VARCHAR(64)) AS check_name,
+  COUNT(*) AS cntr
+FROM eligibility_poc c
+WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+
+UNION ALL
+
+-- Detailed waterfall breakdown and regain for push - promotions
+SELECT
+  'push - promotions' AS section,
+  stat_name,
+  check_name,
+  cntr
+FROM (
+      SELECT
+        'unique_drops' AS stat_name,
+        'push_promotions_1' AS check_name,SUM(CASE WHEN c.push_promotions_1 = 0 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'unique_drops' AS stat_name,
+        'push_promotions_2' AS check_name,SUM(CASE WHEN c.push_promotions_2 = 0 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+          AND NOT ( c.push_promotions_1 = 1 OR c.push_promotions_2 = 1 )
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'incremental_drops' AS stat_name,
+        'push_promotions_1' AS check_name,SUM(CASE WHEN c.push_promotions_1 = 0 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'incremental_drops' AS stat_name,
+        'push_promotions_2' AS check_name,SUM(CASE WHEN c.push_promotions_2 = 0 AND c.push_promotions_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+          AND NOT ( c.push_promotions_1 = 1 OR c.push_promotions_2 = 1 )
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'remaining' AS stat_name,
+        'push_promotions_1' AS check_name,SUM(CASE WHEN c.push_promotions_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'remaining' AS stat_name,
+        'push_promotions_2' AS check_name,SUM(CASE WHEN c.push_promotions_2 = 1 AND c.push_promotions_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+          AND NOT ( c.push_promotions_1 = 1 OR c.push_promotions_2 = 1 )
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'cumulative_drops' AS stat_name,
+        'push_promotions_1' AS check_name,COUNT(*) - SUM(CASE WHEN c.push_promotions_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'cumulative_drops' AS stat_name,
+        'push_promotions_2' AS check_name,COUNT(*) - SUM(CASE WHEN c.push_promotions_2 = 1 AND c.push_promotions_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+          AND NOT ( c.push_promotions_1 = 1 OR c.push_promotions_2 = 1 )
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'regain' AS stat_name,
+        'push_promotions_1' AS check_name,SUM(CASE WHEN c.push_promotions_1 = 0 AND c.push_promotions_2 = 1
+          THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'regain' AS stat_name,
+        'push_promotions_2' AS check_name,SUM(CASE WHEN c.push_promotions_2 = 0 AND c.push_promotions_1 = 1
+          THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+          AND NOT ( c.push_promotions_1 = 1 OR c.push_promotions_2 = 1 )
+      GROUP BY 1,2
+) q
+;
+-- Records claimed for push - surveys
+SELECT
+  'push - surveys' AS section,
+  'Records Claimed' AS stat_name,
+  CAST(NULL AS VARCHAR(64)) AS check_name,
+  COUNT(*) AS cntr
+FROM eligibility_poc c
+WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+  AND NOT ( c.push_promotions_1 = 1 OR c.push_promotions_2 = 1 )
+
+UNION ALL
+
+-- Detailed waterfall breakdown and regain for push - surveys
+SELECT
+  'push - surveys' AS section,
+  stat_name,
+  check_name,
+  cntr
+FROM (
+      SELECT
+        'unique_drops' AS stat_name,
+        'push_surveys_1' AS check_name,SUM(CASE WHEN c.push_surveys_1 = 0 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'incremental_drops' AS stat_name,
+        'push_surveys_1' AS check_name,SUM(CASE WHEN c.push_surveys_1 = 0 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'remaining' AS stat_name,
+        'push_surveys_1' AS check_name,SUM(CASE WHEN c.push_surveys_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'cumulative_drops' AS stat_name,
+        'push_surveys_1' AS check_name,COUNT(*) - SUM(CASE WHEN c.push_surveys_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'regain' AS stat_name,
+        'push_surveys_1' AS check_name,SUM(CASE WHEN c.push_surveys_1 = 0
+          THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+      GROUP BY 1,2
+) q
+;
+ℹ️ [22:25:24] root INFO: Fetched DataFrame with 11 rows and 4 columns in 0.71s
+ℹ️ [22:25:24] root INFO: Waterfall report for 'customer_id_account_id' saved to /home/taco/projects/recodeWaterfall/reports/poc/reports/poc/waterfall/waterfall_report_eligibility_poc_customer_id_account_id.xlsx
+ℹ️ [22:25:24] root INFO: Processing waterfall grouping 'region_id_segment_id'
+ℹ️ [22:25:24] root INFO: Fetching data to DataFrame
+🐛 [22:25:24] root DEBUG: -- Jinja2 Template: waterfall.sql.j2
+-- Purpose: Unified waterfall report with base/channel BA segments and non-BA bucket segments, including regain metric.
+  
+WITH base_population AS (
+    SELECT *
+    FROM eligibility_poc c
+),
+flags AS (
+    SELECT
+        region_id, 
+        segment_id, 
+        main_BA_1, 
+        main_BA_2
+    FROM base_population
+)
+SELECT
+  stat_name,
+  check_name,
+  cntr
+FROM (
+    -- initial population count
+    SELECT
+      'initial_population' AS stat_name,
+      'Total' AS check_name,
+      COUNT(*) AS cntr
+    FROM base_population
+
+    UNION ALL
+
+    -- standard waterfall parts (unique, incremental, remaining, cumulative)
+    SELECT
+      'unique_drops' AS stat_name,
+      check_name,
+      cntr
+    FROM (
+        SELECT
+          'main_BA_1' AS check_name,SUM(CASE WHEN main_BA_1 = 0 THEN 1 ELSE 0 END) AS cntr
+        FROM flags
+        UNION ALL
+        
+        SELECT
+          'main_BA_2' AS check_name,SUM(CASE WHEN main_BA_2 = 0 THEN 1 ELSE 0 END) AS cntr
+        FROM flags
+        
+        
+    ) q
+    
+    UNION ALL
+    
+    SELECT
+      'incremental_drops' AS stat_name,
+      check_name,
+      cntr
+    FROM (
+        SELECT
+          'main_BA_1' AS check_name,SUM(CASE WHEN main_BA_1 = 0 THEN 1 ELSE 0 END) AS cntr
+        FROM flags
+        UNION ALL
+        
+        SELECT
+          'main_BA_2' AS check_name,SUM(CASE WHEN main_BA_2 = 0 AND main_BA_1 = 1 THEN 1 ELSE 0 END) AS cntr
+        FROM flags
+        
+        
+    ) q
+    
+    UNION ALL
+    
+    SELECT
+      'remaining' AS stat_name,
+      check_name,
+      cntr
+    FROM (
+        SELECT
+          'main_BA_1' AS check_name,SUM(CASE WHEN main_BA_1 = 1 THEN 1 ELSE 0 END) AS cntr
+        FROM flags
+        UNION ALL
+        
+        SELECT
+          'main_BA_2' AS check_name,SUM(CASE WHEN main_BA_2 = 1 AND main_BA_1 = 1 THEN 1 ELSE 0 END) AS cntr
+        FROM flags
+        
+        
+    ) q
+    
+    UNION ALL
+    
+    SELECT
+      'cumulative_drops' AS stat_name,
+      check_name,
+      cntr
+    FROM (
+        SELECT
+          'main_BA_1' AS check_name,COUNT(*) - SUM(CASE WHEN main_BA_1 = 1 THEN 1 ELSE 0 END) AS cntr
+        FROM flags
+        UNION ALL
+        
+        SELECT
+          'main_BA_2' AS check_name,COUNT(*) - SUM(CASE WHEN main_BA_2 = 1 AND main_BA_1 = 1 THEN 1 ELSE 0 END) AS cntr
+        FROM flags
+        
+        
+    ) q
+    
+
+    UNION ALL
+
+    -- regain metric: rows regained if only this check failed (others passed) and segments condition holds
+    SELECT
+      'regain' AS stat_name,
+      check_name,
+      cntr
+    FROM (
+      SELECT
+        'main_BA_1' AS check_name,
+        SUM(CASE WHEN main_BA_1 = 0 AND main_BA_2 = 1
+        THEN 1 ELSE 0 END) AS cntr
+      FROM flags
+      UNION ALL
+      
+      SELECT
+        'main_BA_2' AS check_name,
+        SUM(CASE WHEN main_BA_2 = 0 AND main_BA_1 = 1
+        THEN 1 ELSE 0 END) AS cntr
+      FROM flags
+      
+      
+) r
+) metrics;
+ℹ️ [22:25:25] root INFO: Fetched DataFrame with 11 rows and 3 columns in 0.60s
+ℹ️ [22:25:25] root INFO: Fetching data to DataFrame
+🐛 [22:25:25] root DEBUG: -- Jinja2 Template: waterfall.sql.j2
+-- Purpose: Unified waterfall report with base/channel BA segments and non-BA bucket segments, including regain metric.
+  
+WITH base_population AS (
+    SELECT *
+    FROM eligibility_poc c
+    WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1)
+),
+flags AS (
+    SELECT
+        region_id, 
+        segment_id, 
+        email_BA_1, 
+        email_loyalty_1, 
+        email_promo_1, 
+        email_promo_2
+    FROM base_population
+)
+SELECT
+  stat_name,
+  check_name,
+  cntr
+FROM (
+    -- initial population count
+    SELECT
+      'initial_population' AS stat_name,
+      'Total' AS check_name,
+      COUNT(*) AS cntr
+    FROM base_population
+
+    UNION ALL
+
+    -- standard waterfall parts (unique, incremental, remaining, cumulative)
+    SELECT
+      'unique_drops' AS stat_name,
+      check_name,
+      cntr
+    FROM (
+        SELECT
+          'email_BA_1' AS check_name,SUM(CASE WHEN email_BA_1 = 0 THEN 1 ELSE 0 END) AS cntr
+        FROM flags
+        
+        
+    ) q
+    
+    UNION ALL
+    
+    SELECT
+      'incremental_drops' AS stat_name,
+      check_name,
+      cntr
+    FROM (
+        SELECT
+          'email_BA_1' AS check_name,SUM(CASE WHEN email_BA_1 = 0 THEN 1 ELSE 0 END) AS cntr
+        FROM flags
+        
+        
+    ) q
+    
+    UNION ALL
+    
+    SELECT
+      'remaining' AS stat_name,
+      check_name,
+      cntr
+    FROM (
+        SELECT
+          'email_BA_1' AS check_name,SUM(CASE WHEN email_BA_1 = 1 THEN 1 ELSE 0 END) AS cntr
+        FROM flags
+        
+        
+    ) q
+    
+    UNION ALL
+    
+    SELECT
+      'cumulative_drops' AS stat_name,
+      check_name,
+      cntr
+    FROM (
+        SELECT
+          'email_BA_1' AS check_name,COUNT(*) - SUM(CASE WHEN email_BA_1 = 1 THEN 1 ELSE 0 END) AS cntr
+        FROM flags
+        
+        
+    ) q
+    
+
+    UNION ALL
+
+    -- regain metric: rows regained if only this check failed (others passed) and segments condition holds
+    SELECT
+      'regain' AS stat_name,
+      check_name,
+      cntr
+    FROM (
+      SELECT
+        'email_BA_1' AS check_name,
+        SUM(CASE WHEN email_BA_1 = 0
+            AND (
+                (email_loyalty_1 = 1) OR 
+                (email_promo_1 = 1 OR email_promo_2 = 1)
+            )
+        THEN 1 ELSE 0 END) AS cntr
+      FROM flags
+      
+      
+) r
+) metrics;
+ℹ️ [22:25:25] root INFO: Fetched DataFrame with 6 rows and 3 columns in 0.37s
+ℹ️ [22:25:25] root INFO: Fetching data to DataFrame
+🐛 [22:25:25] root DEBUG: -- Jinja2 Template: waterfall.sql.j2
+-- Purpose: Unified waterfall report with base/channel BA segments and non-BA bucket segments, including regain metric.
+-- Records claimed for email - loyalty
+SELECT
+  'email - loyalty' AS section,
+  'Records Claimed' AS stat_name,
+  CAST(NULL AS VARCHAR(64)) AS check_name,
+  COUNT(*) AS cntr
+FROM eligibility_poc c
+WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+
+UNION ALL
+
+-- Detailed waterfall breakdown and regain for email - loyalty
+SELECT
+  'email - loyalty' AS section,
+  stat_name,
+  check_name,
+  cntr
+FROM (
+      SELECT
+        'unique_drops' AS stat_name,
+        'email_loyalty_1' AS check_name,SUM(CASE WHEN c.email_loyalty_1 = 0 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'incremental_drops' AS stat_name,
+        'email_loyalty_1' AS check_name,SUM(CASE WHEN c.email_loyalty_1 = 0 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'remaining' AS stat_name,
+        'email_loyalty_1' AS check_name,SUM(CASE WHEN c.email_loyalty_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'cumulative_drops' AS stat_name,
+        'email_loyalty_1' AS check_name,COUNT(*) - SUM(CASE WHEN c.email_loyalty_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'regain' AS stat_name,
+        'email_loyalty_1' AS check_name,SUM(CASE WHEN c.email_loyalty_1 = 0
+          THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+      GROUP BY 1,2
+) q
+;
+-- Records claimed for email - promo
+SELECT
+  'email - promo' AS section,
+  'Records Claimed' AS stat_name,
+  CAST(NULL AS VARCHAR(64)) AS check_name,
+  COUNT(*) AS cntr
+FROM eligibility_poc c
+WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+  AND NOT ( c.email_loyalty_1 = 1 )
+
+UNION ALL
+
+-- Detailed waterfall breakdown and regain for email - promo
+SELECT
+  'email - promo' AS section,
+  stat_name,
+  check_name,
+  cntr
+FROM (
+      SELECT
+        'unique_drops' AS stat_name,
+        'email_promo_1' AS check_name,SUM(CASE WHEN c.email_promo_1 = 0 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'unique_drops' AS stat_name,
+        'email_promo_2' AS check_name,SUM(CASE WHEN c.email_promo_2 = 0 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+          AND NOT ( c.email_loyalty_1 = 1 )
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'incremental_drops' AS stat_name,
+        'email_promo_1' AS check_name,SUM(CASE WHEN c.email_promo_1 = 0 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'incremental_drops' AS stat_name,
+        'email_promo_2' AS check_name,SUM(CASE WHEN c.email_promo_2 = 0 AND c.email_promo_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+          AND NOT ( c.email_loyalty_1 = 1 )
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'remaining' AS stat_name,
+        'email_promo_1' AS check_name,SUM(CASE WHEN c.email_promo_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'remaining' AS stat_name,
+        'email_promo_2' AS check_name,SUM(CASE WHEN c.email_promo_2 = 1 AND c.email_promo_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+          AND NOT ( c.email_loyalty_1 = 1 )
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'cumulative_drops' AS stat_name,
+        'email_promo_1' AS check_name,COUNT(*) - SUM(CASE WHEN c.email_promo_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'cumulative_drops' AS stat_name,
+        'email_promo_2' AS check_name,COUNT(*) - SUM(CASE WHEN c.email_promo_2 = 1 AND c.email_promo_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+          AND NOT ( c.email_loyalty_1 = 1 )
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'regain' AS stat_name,
+        'email_promo_1' AS check_name,SUM(CASE WHEN c.email_promo_1 = 0 AND c.email_promo_2 = 1
+          THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'regain' AS stat_name,
+        'email_promo_2' AS check_name,SUM(CASE WHEN c.email_promo_2 = 0 AND c.email_promo_1 = 1
+          THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1)
+          AND NOT ( c.email_loyalty_1 = 1 )
+      GROUP BY 1,2
+) q
+;
+ℹ️ [22:25:26] root INFO: Fetched DataFrame with 6 rows and 4 columns in 0.45s
+ℹ️ [22:25:26] root INFO: Fetching data to DataFrame
+🐛 [22:25:26] root DEBUG: -- Jinja2 Template: waterfall.sql.j2
+-- Purpose: Unified waterfall report with base/channel BA segments and non-BA bucket segments, including regain metric.
+  
+WITH base_population AS (
+    SELECT *
+    FROM eligibility_poc c
+    WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1)
+),
+flags AS (
+    SELECT
+        region_id, 
+        segment_id, 
+        sms_BA_1, 
+        sms_rfm_1, 
+        sms_tx_1, 
+        sms_tx_2
+    FROM base_population
+)
+SELECT
+  stat_name,
+  check_name,
+  cntr
+FROM (
+    -- initial population count
+    SELECT
+      'initial_population' AS stat_name,
+      'Total' AS check_name,
+      COUNT(*) AS cntr
+    FROM base_population
+
+    UNION ALL
+
+    -- standard waterfall parts (unique, incremental, remaining, cumulative)
+    SELECT
+      'unique_drops' AS stat_name,
+      check_name,
+      cntr
+    FROM (
+        SELECT
+          'sms_BA_1' AS check_name,SUM(CASE WHEN sms_BA_1 = 0 THEN 1 ELSE 0 END) AS cntr
+        FROM flags
+        
+        
+    ) q
+    
+    UNION ALL
+    
+    SELECT
+      'incremental_drops' AS stat_name,
+      check_name,
+      cntr
+    FROM (
+        SELECT
+          'sms_BA_1' AS check_name,SUM(CASE WHEN sms_BA_1 = 0 THEN 1 ELSE 0 END) AS cntr
+        FROM flags
+        
+        
+    ) q
+    
+    UNION ALL
+    
+    SELECT
+      'remaining' AS stat_name,
+      check_name,
+      cntr
+    FROM (
+        SELECT
+          'sms_BA_1' AS check_name,SUM(CASE WHEN sms_BA_1 = 1 THEN 1 ELSE 0 END) AS cntr
+        FROM flags
+        
+        
+    ) q
+    
+    UNION ALL
+    
+    SELECT
+      'cumulative_drops' AS stat_name,
+      check_name,
+      cntr
+    FROM (
+        SELECT
+          'sms_BA_1' AS check_name,COUNT(*) - SUM(CASE WHEN sms_BA_1 = 1 THEN 1 ELSE 0 END) AS cntr
+        FROM flags
+        
+        
+    ) q
+    
+
+    UNION ALL
+
+    -- regain metric: rows regained if only this check failed (others passed) and segments condition holds
+    SELECT
+      'regain' AS stat_name,
+      check_name,
+      cntr
+    FROM (
+      SELECT
+        'sms_BA_1' AS check_name,
+        SUM(CASE WHEN sms_BA_1 = 0
+            AND (
+                (sms_rfm_1 = 1) OR 
+                (sms_tx_1 = 1 OR sms_tx_2 = 1)
+            )
+        THEN 1 ELSE 0 END) AS cntr
+      FROM flags
+      
+      
+) r
+) metrics;
+ℹ️ [22:25:26] root INFO: Fetched DataFrame with 6 rows and 3 columns in 0.41s
+ℹ️ [22:25:26] root INFO: Fetching data to DataFrame
+🐛 [22:25:26] root DEBUG: -- Jinja2 Template: waterfall.sql.j2
+-- Purpose: Unified waterfall report with base/channel BA segments and non-BA bucket segments, including regain metric.
+-- Records claimed for sms - rfm
+SELECT
+  'sms - rfm' AS section,
+  'Records Claimed' AS stat_name,
+  CAST(NULL AS VARCHAR(64)) AS check_name,
+  COUNT(*) AS cntr
+FROM eligibility_poc c
+WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+
+UNION ALL
+
+-- Detailed waterfall breakdown and regain for sms - rfm
+SELECT
+  'sms - rfm' AS section,
+  stat_name,
+  check_name,
+  cntr
+FROM (
+      SELECT
+        'unique_drops' AS stat_name,
+        'sms_rfm_1' AS check_name,SUM(CASE WHEN c.sms_rfm_1 = 0 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'incremental_drops' AS stat_name,
+        'sms_rfm_1' AS check_name,SUM(CASE WHEN c.sms_rfm_1 = 0 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'remaining' AS stat_name,
+        'sms_rfm_1' AS check_name,SUM(CASE WHEN c.sms_rfm_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'cumulative_drops' AS stat_name,
+        'sms_rfm_1' AS check_name,COUNT(*) - SUM(CASE WHEN c.sms_rfm_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'regain' AS stat_name,
+        'sms_rfm_1' AS check_name,SUM(CASE WHEN c.sms_rfm_1 = 0
+          THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+      GROUP BY 1,2
+) q
+;
+-- Records claimed for sms - tx
+SELECT
+  'sms - tx' AS section,
+  'Records Claimed' AS stat_name,
+  CAST(NULL AS VARCHAR(64)) AS check_name,
+  COUNT(*) AS cntr
+FROM eligibility_poc c
+WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+  AND NOT ( c.sms_rfm_1 = 1 )
+
+UNION ALL
+
+-- Detailed waterfall breakdown and regain for sms - tx
+SELECT
+  'sms - tx' AS section,
+  stat_name,
+  check_name,
+  cntr
+FROM (
+      SELECT
+        'unique_drops' AS stat_name,
+        'sms_tx_1' AS check_name,SUM(CASE WHEN c.sms_tx_1 = 0 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'unique_drops' AS stat_name,
+        'sms_tx_2' AS check_name,SUM(CASE WHEN c.sms_tx_2 = 0 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+          AND NOT ( c.sms_rfm_1 = 1 )
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'incremental_drops' AS stat_name,
+        'sms_tx_1' AS check_name,SUM(CASE WHEN c.sms_tx_1 = 0 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'incremental_drops' AS stat_name,
+        'sms_tx_2' AS check_name,SUM(CASE WHEN c.sms_tx_2 = 0 AND c.sms_tx_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+          AND NOT ( c.sms_rfm_1 = 1 )
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'remaining' AS stat_name,
+        'sms_tx_1' AS check_name,SUM(CASE WHEN c.sms_tx_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'remaining' AS stat_name,
+        'sms_tx_2' AS check_name,SUM(CASE WHEN c.sms_tx_2 = 1 AND c.sms_tx_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+          AND NOT ( c.sms_rfm_1 = 1 )
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'cumulative_drops' AS stat_name,
+        'sms_tx_1' AS check_name,COUNT(*) - SUM(CASE WHEN c.sms_tx_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'cumulative_drops' AS stat_name,
+        'sms_tx_2' AS check_name,COUNT(*) - SUM(CASE WHEN c.sms_tx_2 = 1 AND c.sms_tx_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+          AND NOT ( c.sms_rfm_1 = 1 )
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'regain' AS stat_name,
+        'sms_tx_1' AS check_name,SUM(CASE WHEN c.sms_tx_1 = 0 AND c.sms_tx_2 = 1
+          THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'regain' AS stat_name,
+        'sms_tx_2' AS check_name,SUM(CASE WHEN c.sms_tx_2 = 0 AND c.sms_tx_1 = 1
+          THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1)
+          AND NOT ( c.sms_rfm_1 = 1 )
+      GROUP BY 1,2
+) q
+;
+ℹ️ [22:25:26] root INFO: Fetched DataFrame with 6 rows and 4 columns in 0.42s
+ℹ️ [22:25:26] root INFO: Fetching data to DataFrame
+🐛 [22:25:26] root DEBUG: -- Jinja2 Template: waterfall.sql.j2
+-- Purpose: Unified waterfall report with base/channel BA segments and non-BA bucket segments, including regain metric.
+-- Records claimed for push - promotions
+SELECT
+  'push - promotions' AS section,
+  'Records Claimed' AS stat_name,
+  CAST(NULL AS VARCHAR(64)) AS check_name,
+  COUNT(*) AS cntr
+FROM eligibility_poc c
+WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+
+UNION ALL
+
+-- Detailed waterfall breakdown and regain for push - promotions
+SELECT
+  'push - promotions' AS section,
+  stat_name,
+  check_name,
+  cntr
+FROM (
+      SELECT
+        'unique_drops' AS stat_name,
+        'push_promotions_1' AS check_name,SUM(CASE WHEN c.push_promotions_1 = 0 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'unique_drops' AS stat_name,
+        'push_promotions_2' AS check_name,SUM(CASE WHEN c.push_promotions_2 = 0 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+          AND NOT ( c.push_promotions_1 = 1 OR c.push_promotions_2 = 1 )
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'incremental_drops' AS stat_name,
+        'push_promotions_1' AS check_name,SUM(CASE WHEN c.push_promotions_1 = 0 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'incremental_drops' AS stat_name,
+        'push_promotions_2' AS check_name,SUM(CASE WHEN c.push_promotions_2 = 0 AND c.push_promotions_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+          AND NOT ( c.push_promotions_1 = 1 OR c.push_promotions_2 = 1 )
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'remaining' AS stat_name,
+        'push_promotions_1' AS check_name,SUM(CASE WHEN c.push_promotions_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'remaining' AS stat_name,
+        'push_promotions_2' AS check_name,SUM(CASE WHEN c.push_promotions_2 = 1 AND c.push_promotions_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+          AND NOT ( c.push_promotions_1 = 1 OR c.push_promotions_2 = 1 )
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'cumulative_drops' AS stat_name,
+        'push_promotions_1' AS check_name,COUNT(*) - SUM(CASE WHEN c.push_promotions_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'cumulative_drops' AS stat_name,
+        'push_promotions_2' AS check_name,COUNT(*) - SUM(CASE WHEN c.push_promotions_2 = 1 AND c.push_promotions_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+          AND NOT ( c.push_promotions_1 = 1 OR c.push_promotions_2 = 1 )
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'regain' AS stat_name,
+        'push_promotions_1' AS check_name,SUM(CASE WHEN c.push_promotions_1 = 0 AND c.push_promotions_2 = 1
+          THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'regain' AS stat_name,
+        'push_promotions_2' AS check_name,SUM(CASE WHEN c.push_promotions_2 = 0 AND c.push_promotions_1 = 1
+          THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+          AND NOT ( c.push_promotions_1 = 1 OR c.push_promotions_2 = 1 )
+      GROUP BY 1,2
+) q
+;
+-- Records claimed for push - surveys
+SELECT
+  'push - surveys' AS section,
+  'Records Claimed' AS stat_name,
+  CAST(NULL AS VARCHAR(64)) AS check_name,
+  COUNT(*) AS cntr
+FROM eligibility_poc c
+WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+  AND NOT ( c.push_promotions_1 = 1 OR c.push_promotions_2 = 1 )
+
+UNION ALL
+
+-- Detailed waterfall breakdown and regain for push - surveys
+SELECT
+  'push - surveys' AS section,
+  stat_name,
+  check_name,
+  cntr
+FROM (
+      SELECT
+        'unique_drops' AS stat_name,
+        'push_surveys_1' AS check_name,SUM(CASE WHEN c.push_surveys_1 = 0 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'incremental_drops' AS stat_name,
+        'push_surveys_1' AS check_name,SUM(CASE WHEN c.push_surveys_1 = 0 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'remaining' AS stat_name,
+        'push_surveys_1' AS check_name,SUM(CASE WHEN c.push_surveys_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'cumulative_drops' AS stat_name,
+        'push_surveys_1' AS check_name,COUNT(*) - SUM(CASE WHEN c.push_surveys_1 = 1 THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+      GROUP BY 1,2
+      UNION ALL
+      SELECT
+        'regain' AS stat_name,
+        'push_surveys_1' AS check_name,SUM(CASE WHEN c.push_surveys_1 = 0
+          THEN 1 ELSE 0 END) AS cntr
+      FROM eligibility_poc c
+      WHERE (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND 1=1
+      GROUP BY 1,2
+) q
+;
+ℹ️ [22:25:27] root INFO: Fetched DataFrame with 11 rows and 4 columns in 0.52s
+ℹ️ [22:25:27] root INFO: Waterfall report for 'region_id_segment_id' saved to /home/taco/projects/recodeWaterfall/reports/poc/reports/poc/waterfall/waterfall_report_eligibility_poc_region_id_segment_id.xlsx
+ℹ️ [22:25:27] root INFO: Using cached output steps.
+ℹ️ [22:25:27] root INFO: Running output job for channel email
+🐛 [22:25:27] root DEBUG: -- Jinja2 template for final channel output with "Claim and Exclude" logic and deduplication.
+--
+-- Context:
+--   columns: list of columns to select (e.g. ['c.id', 'c.name', ...])
+--   eligibility_table: name of the smart eligibility table.
+--   cases: A list of dicts, ordered by priority, for the CASE statement.
+--          Each dict: {condition: SQL condition string, template: template_name string}
+--   unique_on: A list of columns to partition by for deduplication (e.g., ['c.customer_id']).
+--
+SELECT
+    customer_id,
+    account_id,
+    region_id,
+    segment_id,
+    template_id
+FROM (
+    SELECT
+        c.*,
+        -- This CASE statement is the core of the "Claim and Exclude" logic.
+        -- Because it stops at the first WHEN that is true, the order of the 'cases'
+        -- passed from Python enforces the mutual exclusivity.
+        CASE
+            WHEN (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1) THEN 'email_BA'
+            WHEN (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1) AND (c.email_loyalty_1 = 1) THEN 'email_loyalty'
+            WHEN (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1) AND (c.email_promo_1 = 1 AND c.email_promo_2 = 1) AND (c.email_loyalty_1 = 0) THEN 'email_promo'
+            ELSE NULL
+        END AS template_id
+    FROM eligibility_poc c
+) AS assigned
+-- Only include records that were successfully claimed by a template.
+WHERE template_id IS NOT NULL
+-- This QUALIFY clause handles deduplication efficiently in the database.
+-- It selects only the first row for each unique entity, based on a deterministic order.
+QUALIFY ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY template_id) = 1;
+ℹ️ [22:25:27] root INFO: Fetching data to DataFrame
+🐛 [22:25:27] root DEBUG: -- Jinja2 template for final channel output with "Claim and Exclude" logic and deduplication.
+--
+-- Context:
+--   columns: list of columns to select (e.g. ['c.id', 'c.name', ...])
+--   eligibility_table: name of the smart eligibility table.
+--   cases: A list of dicts, ordered by priority, for the CASE statement.
+--          Each dict: {condition: SQL condition string, template: template_name string}
+--   unique_on: A list of columns to partition by for deduplication (e.g., ['c.customer_id']).
+--
+SELECT
+    customer_id,
+    account_id,
+    region_id,
+    segment_id,
+    template_id
+FROM (
+    SELECT
+        c.*,
+        -- This CASE statement is the core of the "Claim and Exclude" logic.
+        -- Because it stops at the first WHEN that is true, the order of the 'cases'
+        -- passed from Python enforces the mutual exclusivity.
+        CASE
+            WHEN (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1) THEN 'email_BA'
+            WHEN (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1) AND (c.email_loyalty_1 = 1) THEN 'email_loyalty'
+            WHEN (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.email_BA_1 = 1) AND (c.email_promo_1 = 1 AND c.email_promo_2 = 1) AND (c.email_loyalty_1 = 0) THEN 'email_promo'
+            ELSE NULL
+        END AS template_id
+    FROM eligibility_poc c
+) AS assigned
+-- Only include records that were successfully claimed by a template.
+WHERE template_id IS NOT NULL
+-- This QUALIFY clause handles deduplication efficiently in the database.
+-- It selects only the first row for each unique entity, based on a deterministic order.
+QUALIFY ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY template_id) = 1;
+ℹ️ [22:25:27] root INFO: Fetched DataFrame with 17 rows and 5 columns in 0.18s
+ℹ️ [22:25:27] root INFO: Fetched 17 rows for channel email
+ℹ️ [22:25:27] root INFO: Writing output file for channel email to /home/taco/projects/recodeWaterfall/reports/poc/reports/poc/email/email_list.csv
+ℹ️ [22:25:27] root INFO: Running output job for channel sms
+🐛 [22:25:27] root DEBUG: -- Jinja2 template for final channel output with "Claim and Exclude" logic and deduplication.
+--
+-- Context:
+--   columns: list of columns to select (e.g. ['c.id', 'c.name', ...])
+--   eligibility_table: name of the smart eligibility table.
+--   cases: A list of dicts, ordered by priority, for the CASE statement.
+--          Each dict: {condition: SQL condition string, template: template_name string}
+--   unique_on: A list of columns to partition by for deduplication (e.g., ['c.customer_id']).
+--
+SELECT
+    customer_id,
+    account_id,
+    region_id,
+    segment_id,
+    template_id
+FROM (
+    SELECT
+        c.*,
+        -- This CASE statement is the core of the "Claim and Exclude" logic.
+        -- Because it stops at the first WHEN that is true, the order of the 'cases'
+        -- passed from Python enforces the mutual exclusivity.
+        CASE
+            WHEN (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1) THEN 'sms_BA'
+            WHEN (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1) AND (c.sms_rfm_1 = 1) THEN 'sms_rfm'
+            WHEN (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1) AND (c.sms_tx_1 = 1 AND c.sms_tx_2 = 1) AND (c.sms_rfm_1 = 0) THEN 'sms_tx'
+            ELSE NULL
+        END AS template_id
+    FROM eligibility_poc c
+) AS assigned
+-- Only include records that were successfully claimed by a template.
+WHERE template_id IS NOT NULL
+-- This QUALIFY clause handles deduplication efficiently in the database.
+-- It selects only the first row for each unique entity, based on a deterministic order.
+QUALIFY ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY template_id) = 1;
+ℹ️ [22:25:27] root INFO: Fetching data to DataFrame
+🐛 [22:25:27] root DEBUG: -- Jinja2 template for final channel output with "Claim and Exclude" logic and deduplication.
+--
+-- Context:
+--   columns: list of columns to select (e.g. ['c.id', 'c.name', ...])
+--   eligibility_table: name of the smart eligibility table.
+--   cases: A list of dicts, ordered by priority, for the CASE statement.
+--          Each dict: {condition: SQL condition string, template: template_name string}
+--   unique_on: A list of columns to partition by for deduplication (e.g., ['c.customer_id']).
+--
+SELECT
+    customer_id,
+    account_id,
+    region_id,
+    segment_id,
+    template_id
+FROM (
+    SELECT
+        c.*,
+        -- This CASE statement is the core of the "Claim and Exclude" logic.
+        -- Because it stops at the first WHEN that is true, the order of the 'cases'
+        -- passed from Python enforces the mutual exclusivity.
+        CASE
+            WHEN (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1) THEN 'sms_BA'
+            WHEN (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1) AND (c.sms_rfm_1 = 1) THEN 'sms_rfm'
+            WHEN (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (c.sms_BA_1 = 1) AND (c.sms_tx_1 = 1 AND c.sms_tx_2 = 1) AND (c.sms_rfm_1 = 0) THEN 'sms_tx'
+            ELSE NULL
+        END AS template_id
+    FROM eligibility_poc c
+) AS assigned
+-- Only include records that were successfully claimed by a template.
+WHERE template_id IS NOT NULL
+-- This QUALIFY clause handles deduplication efficiently in the database.
+-- It selects only the first row for each unique entity, based on a deterministic order.
+QUALIFY ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY template_id) = 1;
+ℹ️ [22:25:28] root INFO: Fetched DataFrame with 8 rows and 5 columns in 0.26s
+ℹ️ [22:25:28] root INFO: Fetched 8 rows for channel sms
+ℹ️ [22:25:28] root INFO: Writing output file for channel sms to /home/taco/projects/recodeWaterfall/reports/poc/reports/poc/sms/sms_list.parquet
+ℹ️ [22:25:28] root INFO: Running output job for channel push
+🐛 [22:25:28] root DEBUG: -- Jinja2 template for final channel output with "Claim and Exclude" logic and deduplication.
+--
+-- Context:
+--   columns: list of columns to select (e.g. ['c.id', 'c.name', ...])
+--   eligibility_table: name of the smart eligibility table.
+--   cases: A list of dicts, ordered by priority, for the CASE statement.
+--          Each dict: {condition: SQL condition string, template: template_name string}
+--   unique_on: A list of columns to partition by for deduplication (e.g., ['c.customer_id']).
+--
+SELECT
+    customer_id,
+    account_id,
+    region_id,
+    segment_id,
+    template_id
+FROM (
+    SELECT
+        c.*,
+        -- This CASE statement is the core of the "Claim and Exclude" logic.
+        -- Because it stops at the first WHEN that is true, the order of the 'cases'
+        -- passed from Python enforces the mutual exclusivity.
+        CASE
+            WHEN (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (1 = 1) THEN 'push_BA'
+            WHEN (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (1 = 1) AND (c.push_promotions_1 = 1 AND c.push_promotions_2 = 1) THEN 'push_promotions'
+            WHEN (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (1 = 1) AND (c.push_surveys_1 = 1) AND (c.push_promotions_1 = 0 OR c.push_promotions_2 = 0) THEN 'push_surveys'
+            ELSE NULL
+        END AS template_id
+    FROM eligibility_poc c
+) AS assigned
+-- Only include records that were successfully claimed by a template.
+WHERE template_id IS NOT NULL
+-- This QUALIFY clause handles deduplication efficiently in the database.
+-- It selects only the first row for each unique entity, based on a deterministic order.
+QUALIFY ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY template_id) = 1;
+ℹ️ [22:25:28] root INFO: Fetching data to DataFrame
+🐛 [22:25:28] root DEBUG: -- Jinja2 template for final channel output with "Claim and Exclude" logic and deduplication.
+--
+-- Context:
+--   columns: list of columns to select (e.g. ['c.id', 'c.name', ...])
+--   eligibility_table: name of the smart eligibility table.
+--   cases: A list of dicts, ordered by priority, for the CASE statement.
+--          Each dict: {condition: SQL condition string, template: template_name string}
+--   unique_on: A list of columns to partition by for deduplication (e.g., ['c.customer_id']).
+--
+SELECT
+    customer_id,
+    account_id,
+    region_id,
+    segment_id,
+    template_id
+FROM (
+    SELECT
+        c.*,
+        -- This CASE statement is the core of the "Claim and Exclude" logic.
+        -- Because it stops at the first WHEN that is true, the order of the 'cases'
+        -- passed from Python enforces the mutual exclusivity.
+        CASE
+            WHEN (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (1 = 1) THEN 'push_BA'
+            WHEN (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (1 = 1) AND (c.push_promotions_1 = 1 AND c.push_promotions_2 = 1) THEN 'push_promotions'
+            WHEN (c.main_BA_1 = 1 AND c.main_BA_2 = 1) AND (1 = 1) AND (c.push_surveys_1 = 1) AND (c.push_promotions_1 = 0 OR c.push_promotions_2 = 0) THEN 'push_surveys'
+            ELSE NULL
+        END AS template_id
+    FROM eligibility_poc c
+) AS assigned
+-- Only include records that were successfully claimed by a template.
+WHERE template_id IS NOT NULL
+-- This QUALIFY clause handles deduplication efficiently in the database.
+-- It selects only the first row for each unique entity, based on a deterministic order.
+QUALIFY ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY template_id) = 1;
+ℹ️ [22:25:28] root INFO: Fetched DataFrame with 17 rows and 5 columns in 0.34s
+ℹ️ [22:25:28] root INFO: Fetched 17 rows for channel push
+ℹ️ [22:25:28] root INFO: Writing output file for channel push to /home/taco/projects/recodeWaterfall/reports/poc/reports/poc/push/push_list.xlsx
+ℹ️ [22:25:28] root INFO: Cleaning up DB connection
