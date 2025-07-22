@@ -9,6 +9,7 @@ import json
 
 from tlptaco.config.schema import AppConfig
 
+# TODO: the yaml needs to be read in order (i.e., OrderedDict since segment order matters)
 def load_config(path: str) -> AppConfig:
     """
     Load a YAML or JSON config file and parse into AppConfig.

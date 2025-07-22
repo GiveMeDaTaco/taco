@@ -93,6 +93,10 @@ class OutputEngine:
                        'unique_on': out_cfg.unique_on, 'cases': cases}
             sql = gen.render('output.sql.j2', context)
 
+            # Log rendered SQL
+            from tlptaco.utils.logging import log_sql_section
+            log_sql_section(f'Output - {channel_name}', sql)
+
             # Determine file extension: use .xlsx for 'excel'
             fmt = out_cfg.output_options.format.lower()
             ext = 'xlsx' if fmt == 'excel' else fmt

@@ -3,6 +3,7 @@ End-to-end smoke test for the tlptaco CLI with a dummy DBRunner.
 """
 import sys
 import os
+
 import yaml
 import pandas as pd
 import pytest
@@ -19,6 +20,13 @@ def patch_spinner_and_progress(monkeypatch):
         def stop(self): pass
     monkeypatch.setattr('tlptaco.utils.loading_bar.LoadingSpinner', DummySpinner)
     monkeypatch.setattr('tlptaco.utils.loading_bar.ProgressManager', DummySpinner)
+    # Patch configure_logging to no-op to avoid touching filesystem
+    def dummy_configure_logging(cfg, verbose=False):
+        import logging
+        logger = logging.getLogger('dummy')
+        logger.addHandler(logging.NullHandler())
+        return logger
+    monkeypatch.setattr(cli_mod, 'configure_logging', dummy_configure_logging)
     yield
 
 class DummyRunner:
@@ -81,56 +89,39 @@ def capture_writes(monkeypatch):
 
 def test_cli_end_to_end(tmp_path, capture_writes):
     wf_captured, out_captured = capture_writes
-    # Build a minimal config
-    cfg = {
-        'logging': {'level': 'INFO', 'file': None, 'debug_file': None},
-        'database': {'host': 'h', 'user': 'u', 'password': 'p', 'logmech': None},
-        'eligibility': {
-            'eligibility_table': 'elig_tbl',
-            'unique_identifiers': ['t.id'],
-            'tables': [
-                {'name': 't', 'alias': 't', 'sql': None,
-                 'join_type': None, 'join_conditions': None,
-                 'where_conditions': None, 'unique_index': None, 'collect_stats': None}
-            ],
-            'conditions': {
-                'main': {'BA': [{'sql': '1=1'}], 'others': {}},
-                'channels': {'default': {'BA': [{'sql': '1=1'}], 'others': {}}}
-            }
-        },
-        'waterfall': {'output_directory': 'wf', 'count_columns': ['t.id']},
-        'output': {'channels': {
-            'default': {
-                'columns': ['t.id'],
-                'file_location': 'out',
-                'file_base_name': 'out',
-                'output_options': {'format': 'csv', 'additional_arguments': {}, 'custom_function': None},
-                'unique_on': []
-            }
-        }}
-    }
-    # Write YAML config
+    # ------------------------------------------------------------------
+    # Load the full POC YAML and tweak logging paths to avoid filesystem
+    # issues during the test run.
+    # ------------------------------------------------------------------
+    poc_path = Path(__file__).resolve().parent.parent / "example_campaign_poc.yaml"
+    cfg_obj = yaml.safe_load(poc_path.read_text())
+
+    # Simplify logging so configure_logging doesn't attempt to write files
+    cfg_obj['logging']['file'] = None
+    cfg_obj['logging']['debug_file'] = None
+    cfg_obj['logging'].pop('sql_file', None)
+
+    # Write tweaked YAML into the temp directory
     cfg_path = tmp_path / 'config.yaml'
-    cfg_path.write_text(yaml.safe_dump(cfg))
+    cfg_path.write_text(yaml.safe_dump(cfg_obj))
     # Run CLI
     sys.argv = ['prog', '--config', str(cfg_path), '--output-dir', str(tmp_path), '--mode', 'full']
     cli_mod.main()
 
-    # Verify DBRunner ran DDL for eligibility
-    # DummyRunner tracked via cfg? We cannot inspect runner here, but ensure writes happened
-    # Check waterfall writes
+    # Verify Waterfall writer was called and under expected directory
     assert wf_captured['paths'], "Waterfall writer was not called"
-    # All paths should start with tmp_path/wf
+    expected_wf_prefix = tmp_path / 'reports' / 'poc' / 'waterfall'
     for p in wf_captured['paths']:
-        assert str(tmp_path / 'wf') in p
+        assert str(expected_wf_prefix) in p
 
-    # Check output writes
+    # Check output writes for the three channels
     recs = out_captured['records']
-    assert recs, "Output writer was not called"
-    # Only one channel 'default' -> one record
-    assert len(recs) == 1
-    rec = recs[0]
-    # CSV extension, under tmp_path/out
-    assert rec['fmt'] == 'csv'
-    assert str(tmp_path / 'out') in rec['path']
-    assert rec['path'].endswith('.csv')
+    assert len(recs) == 3, "Expected 3 output channels (email, sms, push)"
+
+    expected_suffixes = {
+        'email_list.csv',
+        'sms_list.parquet',
+        'push_list.xlsx',
+    }
+    got_suffixes = {Path(r['path']).name for r in recs}
+    assert got_suffixes == expected_suffixes

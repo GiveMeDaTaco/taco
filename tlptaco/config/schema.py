@@ -168,6 +168,8 @@ class LoggingConfig(BaseModel):
     level: str
     file: Optional[str]
     debug_file: Optional[str]
+    # New dedicated SQL log file capturing rendered SQL from templates
+    sql_file: Optional[str] = None
 
 class DatabaseConfig(BaseModel):
     host: str

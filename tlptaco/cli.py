@@ -42,11 +42,21 @@ def main():
     os.makedirs(os.path.join(workdir, 'logs'), exist_ok=True)
     # Load configuration
     config = load_config(args.config)
+    # ------------------------------------------------------------------
+    # Derive default log filenames (include offer_code for easy tracing)
+    # ------------------------------------------------------------------
+    import re
+    safe_offer = re.sub(r'[^A-Za-z0-9_-]+', '_', config.offer_code or 'run')
+    logs_dir = os.path.join(workdir, 'logs')
+
     # Override logging paths to use workdir if not explicitly set
     if not config.logging.file:
-        config.logging.file = os.path.join(workdir, 'logs', 'tlptaco.log')
+        config.logging.file = os.path.join(logs_dir, f'tlptaco_{safe_offer}.log')
     if not config.logging.debug_file:
-        config.logging.debug_file = os.path.join(workdir, 'logs', 'tlptaco.debug.log')
+        config.logging.debug_file = os.path.join(logs_dir, f'tlptaco_{safe_offer}.debug.log')
+    # Default SQL log file path
+    if not getattr(config.logging, 'sql_file', None):
+        config.logging.sql_file = os.path.join(logs_dir, f'tlptaco_{safe_offer}.sql.log')
 
     # Override waterfall and output paths to live under --output-dir
     # Waterfall output directory

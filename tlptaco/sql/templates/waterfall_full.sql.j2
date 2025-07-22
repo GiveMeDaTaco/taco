@@ -25,6 +25,7 @@
 {% set all_cols = check_columns + (aux_columns if aux_columns else []) %}
 {% set check_sum = ' + '.join(check_columns) if check_columns else '0' %}
 
+-- TODO: see if I can replace * with the same column selection as the CTE flags table below for efficiency
 WITH base_population AS (
     SELECT *
     FROM {{ eligibility_table }} c

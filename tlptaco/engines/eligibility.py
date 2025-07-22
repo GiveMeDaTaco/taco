@@ -79,6 +79,10 @@ class EligibilityEngine:
 
         self._sql_statements = [stmt for stmt in sql.split(';') if stmt.strip()]
 
+        # Log rendered SQL for visibility/copy-paste
+        from tlptaco.utils.logging import log_sql_section
+        log_sql_section('Eligibility', sql)
+
     def num_steps(self) -> int:
         """
         Calculates the total number of SQL statements that will be executed by the run() method.

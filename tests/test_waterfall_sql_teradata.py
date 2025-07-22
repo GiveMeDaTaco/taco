@@ -51,7 +51,8 @@ class DummyRunner(DBRunner):
 def test_waterfall_sql_parses_for_teradata():
     """Render waterfall SQL for the POC campaign and parse with sqlglot."""
 
-    cfg_path = Path("example_campaign_poc.yaml")
+    # Path to the POC config located at project root
+    cfg_path = Path(__file__).resolve().parent.parent / "example_campaign_poc.yaml"
     config = load_config(str(cfg_path))
 
     dummy = DummyRunner()

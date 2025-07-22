@@ -74,7 +74,10 @@ class WaterfallEngine:
                 'segments': [],  # not used in full template
                 'bucketable_condition': None
             }
+
             sql_main = gen.render('waterfall_full.sql.j2', ctx_main)
+            from tlptaco.utils.logging import log_sql_section
+            log_sql_section(f'Waterfall {name} - Base', sql_main)
             sql_jobs.append({'type': 'standard', 'sql': sql_main, 'section_name': 'Base'})
 
             # --- SECTION 2: PER-CHANNEL WATERFALLS ---
@@ -114,6 +117,7 @@ class WaterfallEngine:
                     }
                     sql_chan_ba = gen.render('waterfall_full.sql.j2', ctx_chan_ba)
                     sql_jobs.append({'type': 'standard', 'sql': sql_chan_ba, 'section_name': f'{channel_name} - BA'})
+                    log_sql_section(f'Waterfall {name} - {channel_name} BA', sql_chan_ba)
 
                 # CHANNEL non-BA segments
                 if channel_cfg.others:
@@ -138,6 +142,7 @@ class WaterfallEngine:
                     }
                     sql_segments = gen.render('waterfall_segments.sql.j2', ctx_segments)
                     sql_jobs.append({'type': 'segments', 'sql': sql_segments})
+                    log_sql_section(f'Waterfall {name} - {channel_name} Segments', sql_segments)
 
             out_path = os.path.join(self.cfg.output_directory,
                                     f"waterfall_report_{elig_cfg.eligibility_table}_{name}.xlsx")
