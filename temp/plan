@@ -1,0 +1,49 @@
+    Here’s the roadmap for the next slices (steps 2–5), so we can pick them off one by one:
+
+        1. Unit-Test the WaterfallEngine End-to-End In-Memory
+             • Write a new test in `tests/test_waterfall_engine.py` (we already added basic coverage).
+             • Add a test for `WaterfallEngine.run()` itself (not just `_prepare_…`), by injecting a dummy runner whose `to_df()` returns a complete long‐format table covering all five metrics across
+    two or three checks, and patching out the Excel writer to capture the “compiled” list.
+             • Assert that `compiled` contains one tuple per section (Base, each channel‐BA, each non-BA segment) and that each DataFrame has columns in this precise order:
+              – `check_name`
+              – `unique_drops`
+              – `incremental_drops`
+              – `cumulative_drops`
+              – `regain`
+              – `remaining`
+        2. Fix & Harden the Full-Campaign Flow Tests
+             • In `tests/test_full_campaign_flow.py` and `test_full_campaign_yaml_flow.py`, replace the patch on `pd.DataFrame.to_excel` with a patch on `write_waterfall_excel` (we’ve started this).
+    Ensure the monkey-patch import path matches exactly how the engine imports it (`import tlptaco.engines.waterfall_excel as wf_mod`).
+             • Have the dummy runner’s `to_df` return rows keyed by `cntr` and with a `section` column so the pivot produces non-empty DataFrames.
+             • Assert that at least one call to `write_waterfall_excel` happened and that the captured paths live under the configured `output_directory`.
+        3. Unit-Test the OutputEngine
+             • In a new test file (e.g. `tests/test_output_engine.py`), stub out the runner’s `to_df` to return a dummy DataFrame (with known columns).
+             • Patch `tlptaco.iostream.writer.write_dataframe` to capture calls.
+             • Drive the engine through:
+              – CSV path: confirm `writer.write_dataframe(df, path, format='csv', …)` is called with the right path/name.
+              – Parquet: same.
+              – Excel: same.
+             • Exercise the `unique_on` behavior by feeding in a DataFrame with duplicates and verifying that duplicates are dropped as expected when `unique_on` is set.
+        4. Smoke-Test Against the Real Example Campaign
+             • In a throwaway script or as a CI step, run:
+
+               python3 -m tlptaco.cli \
+                  --config example_campaign.yaml \
+                  --mode full \
+                  --verbose
+
+             • Inspect one of the generated waterfall .xlsx files:
+              – Confirm the header row shows your `offer_code`, `campaign_planner`, `lead` and timestamp.
+              – Confirm the five metric columns appear in the correct order and their counts make sense for a small test schema (you can mirror the logic.txt example).
+             • Confirm the per-channel CSV/Excel/Parquet outputs appear under `reports/…` with the expected `file_base_name` and format extension.
+        5. Documentation & Cleanup
+             • Update `README.md` (and any sample YAML) to mention the new “Regain If No Scrub” metric and show the five-column waterfall.
+             • Inline comment the two SQL templates (`waterfall_full.sql.j2`, `waterfall_segments.sql.j2`) at the top of each metric block, e.g.:
+
+               -- 1) unique_drops (“Drop If Only This Scrub”)
+               -- 2) incremental_drops (“Drop Incremental”)
+               -- 3) cumulative_drops (“Drop Cumulative”)
+               -- 4) regain (“Regain If No Scrub”)
+               -- 5) remaining (“Remaining”)
+
+      • Bump the version in setup.py or pyproject.toml, add a CHANGELOG entry.

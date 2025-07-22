@@ -4,7 +4,7 @@ Output engine: exports final data to files with optional transforms.
 from tlptaco.config.schema import OutputConfig
 from tlptaco.db.runner import DBRunner
 from tlptaco.utils.logging import get_logger
-from tlptaco.iostream.writer import write_dataframe
+import tlptaco.iostream.writer as io_writer
 from tlptaco.sql.generator import SQLGenerator
 import os
 import importlib
@@ -93,7 +93,11 @@ class OutputEngine:
                        'unique_on': out_cfg.unique_on, 'cases': cases}
             sql = gen.render('output.sql.j2', context)
 
-            path = os.path.join(out_cfg.file_location, f"{out_cfg.file_base_name}.{out_cfg.output_options.format}")
+            # Determine file extension: use .xlsx for 'excel'
+            fmt = out_cfg.output_options.format.lower()
+            ext = 'xlsx' if fmt == 'excel' else fmt
+            path = os.path.join(out_cfg.file_location,
+                                f"{out_cfg.file_base_name}.{ext}")
 
             self._output_jobs.append({
                 'channel_name': channel_name,
@@ -143,8 +147,13 @@ class OutputEngine:
 
             os.makedirs(os.path.dirname(job['path']), exist_ok=True)
             self.logger.info(f"Writing output file for channel {channel_name} to {job['path']}")
-            write_dataframe(df, job['path'], job['output_options'].format,
-                            **(job['output_options'].additional_arguments or {}))
+            # Delegate to io_writer.write_dataframe so tests can monkey-patch
+            io_writer.write_dataframe(
+                df,
+                job['path'],
+                job['output_options'].format,
+                **(job['output_options'].additional_arguments or {})
+            )
 
             if progress:
                 progress.update("Output")

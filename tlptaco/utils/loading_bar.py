@@ -27,12 +27,28 @@ pip install rich
 python loading_bar.py            # bytes demo (default)
 python loading_bar.py steps      # steps demo
 ```
+ASCII-only fallback (environment variable):
+```
+export LOADING_BAR_ASCII=1
+python loading_bar.py steps      # forces ASCII-only display
+```
+CLI flag fallback:
+```
+python loading_bar.py steps --ascii  # forces ASCII-only display via flag
+```
 
 You can also `import simulate` and feed it your own task list.
 
 """
 
 from __future__ import annotations
+# Ensure script resolves imports from project root when executed directly,
+# preventing local modules from shadowing stdlib modules.
+import sys, os
+_script_dir = os.path.dirname(__file__)
+_project_root = os.path.abspath(os.path.join(_script_dir, os.pardir, os.pardir, os.pardir))
+if sys.path and sys.path[0] == _script_dir:
+    sys.path[0] = _project_root
 
 import random
 import time
@@ -113,7 +129,8 @@ class ProgressManager:
                  layers: List[Tuple[str, int]],
                  *,
                  units: str = "steps",
-                 title: str = "Running"):
+                 title: str = "Running",
+                 ascii: bool = False):
         """Manage a multi-layer progress display with an overall bar and individual layer bars.
 
         Parameters
@@ -130,69 +147,78 @@ class ProgressManager:
         # Determine if terminal supports interactive progress
         self.console = Console()
         term_env = os.environ.get('TERM', '')
-        self.enabled = self.console.is_terminal and term_env.lower() != 'dumb'
+        rich_supported = self.console.is_terminal and term_env.lower() != 'dumb'
+        ascii_env = os.environ.get('LOADING_BAR_ASCII', '').lower() in ('1', 'true', 'yes', 'y')
+        # Determine mode: rich if supported and not forced ascii
+        self.use_rich = rich_supported and not ascii and not ascii_env
+        self.ascii_mode = not self.use_rich
         self.units = units
         self.title = title
-        # If not enabled, skip rich progress and avoid spamming output
-        if not self.enabled:
-            # Fallback: no progress display
-            self.grand_total = sum(total for _, total in layers)
-            self.overall = None
-            self.layers = None
-            self.total_task = None
-            self.task_ids = {}
+        self.grand_total = sum(total for _, total in layers)
+        if self.use_rich:
+            # Rich interactive mode
+            self.overall = Progress(*_build_columns(units, overall=True, title=title), console=self.console)
+            self.layers = Progress(*_build_columns(units), console=self.console)
+            self.total_task = self.overall.add_task("overall", total=self.grand_total)
+            self.task_ids = {name: self.layers.add_task(name, total=total) for name, total in layers}
             self.finished = False
-            self.layout = None
+            self.layout = Group(self.overall, self.layers)
             self.live = None
-            return
-        # Interactive mode: build rich Progress bars
-        self.grand_total = sum(total for _, total in layers)
-        self.overall = Progress(*_build_columns(units, overall=True, title=title), console=self.console)
-        self.layers = Progress(*_build_columns(units), console=self.console)
-        self.total_task = self.overall.add_task("overall", total=self.grand_total)
-        self.task_ids = {name: self.layers.add_task(name, total=total) for name, total in layers}
-        # Track completion
-        self.finished = False
-        self.layout = Group(self.overall, self.layers)
-        self.live = None
-
-        self.units = units
-        self.title = title
-        self.grand_total = sum(total for _, total in layers)
-        self.overall = Progress(*_build_columns(units, overall=True, title=title), console=self.console)
-        self.layers = Progress(*_build_columns(units), console=self.console)
-        self.total_task = self.overall.add_task("overall", total=self.grand_total)
-        self.task_ids = {name: self.layers.add_task(name, total=total) for name, total in layers}
-        # A flag to check if all tasks are done
-        self.finished = False
-        self.layout = Group(self.overall, self.layers)
-        self.live = None
+        else:
+            # ASCII fallback mode
+            # Track simple progress counts
+            self.layer_totals = {name: total for name, total in layers}
+            self.layer_completed = {name: 0 for name, _ in layers}
+            self.overall_completed = 0
+            self.task_ids = None
+            self.live = None
+            self.finished = self.overall_completed >= self.grand_total
 
     def __enter__(self):
-        if not self.enabled:
-            return self
-        self.live = Live(self.layout, console=self.console, refresh_per_second=10)
-        self.live.__enter__()
+        if self.use_rich:
+            self.live = Live(self.layout, console=self.console, refresh_per_second=10)
+            self.live.__enter__()
         return self
 
     def update(self, layer_name: str, advance: int = 1):
         """Advance the given layer and the overall bar by the specified amount."""
-        if not self.enabled:
+        if self.use_rich:
+            task_id = self.task_ids.get(layer_name)
+            if task_id is None:
+                raise KeyError(f"Unknown layer '{layer_name}'")
+            self.layers.update(task_id, advance=advance)
+            self.overall.update(self.total_task, advance=advance)
+            self.finished = all(task.finished for task in self.layers.tasks)
+        elif self.ascii_mode:
+            if layer_name not in self.layer_completed:
+                raise KeyError(f"Unknown layer '{layer_name}'")
+            self.layer_completed[layer_name] += advance
+            self.overall_completed += advance
+            parts = [f"{self.title}: {self.overall_completed}/{self.grand_total}"]
+            for name, total in self.layer_totals.items():
+                comp = self.layer_completed.get(name, 0)
+                parts.append(f"{name}: {comp}/{total}")
+            line = " | ".join(parts)
+            try:
+                sys.stdout.write("\r" + line)
+                sys.stdout.flush()
+            except Exception:
+                pass
+            self.finished = self.overall_completed >= self.grand_total
+        else:
             return
-        task_id = self.task_ids.get(layer_name)
-        if task_id is None:
-            raise KeyError(f"Unknown layer '{layer_name}'")
-        self.layers.update(task_id, advance=advance)
-        self.overall.update(self.total_task, advance=advance)
-        # Check if all layer tasks are finished
-        self.finished = all(task.finished for task in self.layers.tasks)
 
 
     def __exit__(self, exc_type, exc, tb):
-        if not self.enabled:
-            return
-        if self.live:
-            self.live.__exit__(exc_type, exc, tb)
+        if self.use_rich:
+            if self.live:
+                self.live.__exit__(exc_type, exc, tb)
+        elif self.ascii_mode:
+            try:
+                sys.stdout.write("\n")
+                sys.stdout.flush()
+            except Exception:
+                pass
 
 # ────────────────────────────────────────────────────────────────────────────────
 # Worker Function
@@ -209,24 +235,24 @@ def worker_function(
     In a real application, this is where you would put your long-running,
     blocking calls (e.g., database queries, file processing).
     """
+    # Main work loop: supports both rich and ASCII modes
     while not progress_manager.finished:
         if stop_event.is_set():
-            # The main thread has told us to stop.
             return
-
         for name, size in layers:
-            task_id = progress_manager.task_ids[name]
-            if progress_manager.layers.tasks[task_id].finished:
-                continue
-
+            # For rich mode, skip finished layers
+            if progress_manager.use_rich:
+                task_id = progress_manager.task_ids.get(name)
+                if task_id is None or progress_manager.layers.tasks[task_id].finished:
+                    continue
+            # Determine work chunk
             if units == "bytes":
                 chunk = random.randint(200_000, 2_000_000)
             else:
                 chunk = random.randint(1, max(1, size // 100))
-
+            # Update progress (rich or ASCII handles internally)
             progress_manager.update(name, advance=chunk)
-
-        # This sleep simulates I/O latency or other work
+        # Simulate latency
         time.sleep(0.05)
 
 
@@ -329,7 +355,10 @@ class LoadingSpinner:
 if __name__ == "__main__":
     import sys
 
-    mode = sys.argv[1].lower() if len(sys.argv) > 1 else "bytes"
+    # Determine mode and optional ASCII flag
+    args = sys.argv[1:]
+    mode = args[0].lower() if args and not args[0].startswith("--") else "bytes"
+    ascii_flag = any(arg in ("--ascii",) for arg in args)
 
     DEMO_LAYERS = [
         ("a9c6b9f9: Pulling fs layer", 120_000_000 if mode == "bytes" else 500),
@@ -339,7 +368,7 @@ if __name__ == "__main__":
     ]
 
     # Set up the progress manager and threading events
-    pm = ProgressManager(DEMO_LAYERS, units=mode)
+    pm = ProgressManager(DEMO_LAYERS, units=mode, ascii=ascii_flag)
     stop_event = threading.Event()
 
     # Set up and start the worker thread. It's a daemon so it will exit

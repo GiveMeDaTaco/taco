@@ -1,3 +1,14 @@
+# How to Dedup
+When pulling from the eligibility table based on the provided unique identifiers, there may be duplicate rows. To dedup, I would like to dedup counts on two different levels:
+- main level:
+    1. dedup based off the unique identifiers, preferring rows with the most amount of main checks passed; if a tiebreaker is needed, then pick the one with the longest unbroken streak of passed checks starting from the left
+- channel level:
+    1. Prefer records that will be bucketed into one of the non-BA channels;  if a tiebreaker is needed, then pick the one with the longest unbroken streak of passed checks starting from the left
+    2. If none of these exist that meet criteria for #1, prefer the record that needs to pass the fewest amount of checks to be bucketed (for each record we would need to calculate how many checks are required to pass for each non-BA template, which would be the BA checks that are not passed + the non-BA template checks not passed; we would compare all these calculations across all the identifiers and prefer the row that had the lowest calculation); if a tiebreaker is needed, then pick the one with the longest unbroken streak of passed checks starting from the left)
+
+In either situation, if there
+
+# Calculations
 Logic for Incremental Drop calculation:
 - If it's a BA segment, this is the number of records who passed all previous checks but did not pass the current check
 - If it's a non-BA segment, this is the number of records who pass all previous BA checks and all previous checks in the same non-BA segment and were not bucketed into a previous non-BA segment but who did not pass the current check
@@ -14,6 +25,7 @@ Logic for Regain If No Scrub calculation:
 Logic for Remaining calculation:
 - Starting population minus the cumulative drop
 
+# Formatting
 Here's an example of how the waterfall should be formatted. The "header" row really just represents row 1 in the spreadsheet. "nan" means blanks. Variables between <> help us understand this template and what should be filled in. Keep in mind this is just an example
 
 |    | [<Offer Code Here> - CP: <campaign planner here> - DEV: <lead here> - As of: <Date here>   | Unnamed: 1                             | Unnamed: 2                                   |   Unnamed: 3 | Unnamed: 4              | Unnamed: 5       | Unnamed: 6      | Unnamed: 7         | Unnamed: 8                 | Unnamed: 9      |   Unnamed: 10 | Unnamed: 11             | Unnamed: 12      | Unnamed: 13     | Unnamed: 14        | Unnamed: 15                | Unnamed: 16     |

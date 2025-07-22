@@ -64,12 +64,15 @@ class WaterfallEngine:
 
             # --- SECTION 1: MAIN/BASE WATERFALL ---
             main_ba_checks = [chk.name for chk in elig_cfg.conditions.main.BA]
+            # Base waterfall (main BA) has no bucketable filter
             ctx_main = {
                 'eligibility_table': elig_cfg.eligibility_table,
                 'unique_identifiers': uniq_ids,
                 'check_columns': main_ba_checks,
+                'aux_columns': [],
                 'pre_filter': None,
-                'segments': []  # no non-BA segments in base waterfall
+                'segments': [],  # not used in full template
+                'bucketable_condition': None
             }
             sql_main = gen.render('waterfall_full.sql.j2', ctx_main)
             sql_jobs.append({'type': 'standard', 'sql': sql_main, 'section_name': 'Base'})
@@ -86,12 +89,28 @@ class WaterfallEngine:
                 channel_ba_check_names = [chk.name for chk in channel_ba_checks_list]
                 # CHANNEL BA WATERFALL
                 if channel_ba_check_names:
+                    # Build OR-list of segment summary conditions for bucketable filter
+                    if channel_cfg.others:
+                        seg_conds = [create_sql_condition(s_checks) for _, s_checks in sorted(channel_cfg.others.items())]
+                        bucketable = ' OR '.join([f'({c})' for c in seg_conds])
+
+                        # Collect additional flag columns referenced by bucketable filter
+                        aux_cols: list[str] = []
+                        for _, s_checks in sorted(channel_cfg.others.items()):
+                            aux_cols.extend([chk.name for chk in s_checks])
+                        aux_cols = [c for c in aux_cols if c not in channel_ba_check_names]
+                    else:
+                        bucketable = None
+                        aux_cols = []
+
                     ctx_chan_ba = {
                         'eligibility_table': elig_cfg.eligibility_table,
                         'unique_identifiers': uniq_ids,
                         'check_columns': channel_ba_check_names,
+                        'aux_columns': aux_cols,
                         'pre_filter': base_filter,
-                        'segments': segments_to_process
+                        'segments': segments_to_process,
+                        'bucketable_condition': bucketable
                     }
                     sql_chan_ba = gen.render('waterfall_full.sql.j2', ctx_chan_ba)
                     sql_jobs.append({'type': 'standard', 'sql': sql_chan_ba, 'section_name': f'{channel_name} - BA'})
@@ -101,8 +120,10 @@ class WaterfallEngine:
                     channel_ba_condition = create_sql_condition(channel_ba_checks_list)
                     segment_base_filter = f"{base_filter} AND {channel_ba_condition}"
 
+                    # For each non-BA segment, prepare summary and detailed SQL
                     for s_name, s_checks in sorted(channel_cfg.others.items()):
-                        segment_condition = create_sql_condition(s_checks, operator='OR')
+                        # Summary condition: pass all checks in this segment
+                        segment_condition = create_sql_condition(s_checks)
                         segments_to_process.append({
                             'name': f'{channel_name} - {s_name}',
                             'checks': [c.name for c in s_checks],
@@ -135,7 +156,8 @@ class WaterfallEngine:
 
     def _pivot_waterfall_df(self, df, section_name):
         """Pivots the long-format waterfall data into a wide-format DataFrame."""
-        metric_df = df[df['stat_name'] != 'Records Claimed']
+        # Exclude summary rows and any initial-population rows
+        metric_df = df[~df['stat_name'].isin(['Records Claimed', 'initial_population'])]
         if metric_df.empty:
             return pd.DataFrame()
         pivoted = metric_df.pivot_table(index='check_name', columns='stat_name', values='cntr').reset_index()
@@ -173,13 +195,15 @@ class WaterfallEngine:
                         all_report_sections.append(df_pivoted)
 
                     elif job['type'] == 'segments':
-                        summary_rows = df_raw[df_raw['stat_name'] == 'Records Claimed'].copy()
+                        # Detailed waterfall for each non-BA segment
                         detail_rows = df_raw[df_raw['stat_name'] != 'Records Claimed'].copy()
                         for section_name in detail_rows['section'].unique():
-                            section_df = self._pivot_waterfall_df(detail_rows[detail_rows['section'] == section_name],
-                                                                  section_name)
-                            all_report_sections.append(section_df)
-                        all_report_sections.append(summary_rows[['section', 'stat_name', 'cntr']])
+                            section_df = self._pivot_waterfall_df(
+                                detail_rows[detail_rows['section'] == section_name],
+                                section_name
+                            )
+                            if not section_df.empty:
+                                all_report_sections.append(section_df)
 
                 if all_report_sections:
                     # Combine all sections into a mapping for Excel writer

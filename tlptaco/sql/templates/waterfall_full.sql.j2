@@ -1,103 +1,147 @@
--- Jinja2 Template: waterfall_full.sql.j2
--- Purpose: Creates a standard, multi-step waterfall report for a given set of checks.
+-- Waterfall Report (Full / BA-level)
+-- ---------------------------------------------------------------------------
+-- This Jinja2 template builds a standard 5-metric waterfall for a *linear* list
+-- of check columns.  It *deduplicates* the underlying eligibility table on the
+-- supplied unique identifiers so that each identifier contributes **at most**
+-- one row to the statistics.  The preferred row is chosen by the following
+-- heuristic which mirrors the business specification in temp/logic.txt:
+--   1.  Row with the *highest* number of passed checks (`pass_cnt`).
+--   2.  (Tie-break) Row appearing *first* in physical order (deterministic).
 --
--- Context:
---   eligibility_table:      Name of the smart eligibility table.
---   unique_identifiers:     List of unique ID columns.
---   check_columns:          A list of the individual check column names to be evaluated in order.
---   pre_filter:             An optional, pre-existing WHERE clause to apply to the base population.
---
+-- Context variables (supplied by WaterfallEngine):
+--   eligibility_table   : name of smart eligibility table (aliased as c)
+--   unique_identifiers  : list[str] – fully-qualified identifier columns
+--   check_columns       : ordered list[str] of 1/0 flag columns to evaluate
+--   pre_filter          : OPTIONAL SQL predicate applied prior to stats
+--   bucketable_condition: OPTIONAL predicate used only by the Regain metric
+-- ---------------------------------------------------------------------------
+
+{# Build a helper list of ID column aliases without table prefix #}
+{% set uid_cols = [] %}
+{% for _uid in unique_identifiers %}
+    {% set _ = uid_cols.append(_uid.split('.')[-1]) %}
+{% endfor %}
+{% if aux_columns is not defined %}{% set aux_columns = [] %}{% endif %}
+{% set all_cols = check_columns + (aux_columns if aux_columns else []) %}
+{% set check_sum = ' + '.join(check_columns) if check_columns else '0' %}
+
 WITH base_population AS (
     SELECT *
     FROM {{ eligibility_table }} c
-    {% if pre_filter %}
+    {%- if pre_filter %}
     WHERE {{ pre_filter }}
-    {% endif %}
+    {%- endif %}
 ),
+
+-- Deduplicate so each identifier group contributes only once.  Preference is
+-- given to rows with more passed checks (pass_cnt desc).
+deduped AS (
+    SELECT *
+    FROM (
+        SELECT
+            bp.*,
+            {{ check_sum }} AS pass_cnt,
+            -- Longest unbroken streak of passes from the left
+            (
+                {% for i in range(check_columns|length) %}
+                    {%- for j in range(i+1) %}{{ check_columns[j] }}{% if j < i %} * {% endif %}{% endfor %}
+                    {%- if not loop.last %} + {% endif %}
+                {% endfor %}
+            ) AS streak_len,
+            ROW_NUMBER() OVER (
+                PARTITION BY {{ uid_cols | join(', ') }}
+                ORDER BY pass_cnt DESC, streak_len DESC
+            ) AS _rn
+        FROM base_population bp
+    ) x
+    WHERE _rn = 1
+),
+
 flags AS (
-  SELECT
-    {% for uid in unique_identifiers %}{{ uid.split('.')[-1] }}{{ "," if not loop.last }}{%- endfor %},
-    {% for col in check_columns %}{{ col }}{{ "," if not loop.last }}{% endfor %}
-  FROM base_population
+    SELECT
+        {% for uid in uid_cols %}{{ uid }}{{ "," if not loop.last }}{% endfor %}
+        {%- if all_cols %}, {% endif %}
+        {% for col in all_cols %}{{ col }}{{ "," if not loop.last }}{% endfor %}
+    FROM deduped
 )
+
+-- ---------------------------------------------------------------------------
+-- Metrics
+-- ---------------------------------------------------------------------------
 SELECT
-  stat_name,
-  check_name,
-  cntr
+    stat_name,
+    check_name,
+    cntr
 FROM (
-    SELECT
-      'initial_population' AS stat_name,
-      'Total' AS check_name,
-      COUNT(*) AS cntr
-    FROM base_population
+    -- Starting population (row 0)
+    SELECT 'initial_population' AS stat_name,
+           'Total'            AS check_name,
+           COUNT(*)           AS cntr
+    FROM flags
 
     UNION ALL
 
-    -- Drop If Only This Scrub
-    {%- for col in check_columns %}
-    SELECT
-      'unique_drops' AS stat_name,
-      '{{ col }}' AS check_name,
-      SUM(CASE WHEN {{ col }} = 0
-               AND ( {%- for other in check_columns if other != col %}{{ other }} = 1{%- if not loop.last %} AND {% endif %}{% endfor %} )
+    -- ①  Drop If Only This Scrub (unique_drops)
+    {% for col in check_columns %}
+    SELECT 'unique_drops' AS stat_name,
+           '{{ col }}'    AS check_name,
+           SUM(CASE WHEN {{ col }} = 0
+                    {% if check_columns|length > 1 %}AND ( {%- for other in check_columns if other != col %}{{ other }} = 1{%- if not loop.last %} AND {% endif %}{% endfor %} ){% endif %}
                THEN 1 ELSE 0 END) AS cntr
     FROM flags
-    {%- if not loop.last %}UNION ALL{% endif %}
-    {%- endfor %}
+    {% if not loop.last %}UNION ALL{% endif %}
+    {% endfor %}
 
     UNION ALL
 
-    -- Drop Incremental
-    {%- for col in check_columns %}
-    SELECT
-      'incremental_drops' AS stat_name,
-      '{{ col }}' AS check_name,
-      SUM(CASE WHEN {{ col }} = 0
-               {%- for prev in check_columns[:loop.index0] %}AND {{ prev }} = 1 {%- endfor %}
+    -- ②  Drop Incremental (incremental_drops)
+    {% for col in check_columns %}
+    SELECT 'incremental_drops' AS stat_name,
+           '{{ col }}'        AS check_name,
+           SUM(CASE WHEN {{ col }} = 0
+                    {%- for prev in check_columns[:loop.index0] %} AND {{ prev }} = 1{%- endfor %}
                THEN 1 ELSE 0 END) AS cntr
     FROM flags
-    {%- if not loop.last %}UNION ALL{% endif %}
-    {%- endfor %}
+    {% if not loop.last %}UNION ALL{% endif %}
+    {% endfor %}
 
     UNION ALL
 
-    -- Drop Cumulative
-    {%- for col in check_columns %}
-    SELECT
-      'cumulative_drops' AS stat_name,
-      '{{ col }}' AS check_name,
-      COUNT(*) - SUM(CASE WHEN {{ col }} = 1
-                         {%- for prev in check_columns[:loop.index0] %}AND {{ prev }} = 1{%- endfor %}
+    -- ③  Drop Cumulative (cumulative_drops)
+    {% for col in check_columns %}
+    SELECT 'cumulative_drops' AS stat_name,
+           '{{ col }}'       AS check_name,
+           COUNT(*) - SUM(CASE WHEN {{ col }} = 1
+                              {%- for prev in check_columns[:loop.index0] %} AND {{ prev }} = 1{%- endfor %}
                          THEN 1 ELSE 0 END) AS cntr
     FROM flags
-    {%- if not loop.last %}UNION ALL{% endif %}
-    {%- endfor %}
+    {% if not loop.last %}UNION ALL{% endif %}
+    {% endfor %}
 
     UNION ALL
 
-    -- Regain If No Scrub
-    {%- for col in check_columns %}
-    SELECT
-      'regain' AS stat_name,
-      '{{ col }}' AS check_name,
-      SUM(CASE WHEN {{ col }} = 0
-               AND ( {%- for other in check_columns if other != col %}{{ other }} = 1{%- if not loop.last %} AND {% endif %}{% endfor %} )
+    -- ④  Regain If No Scrub (regain)
+    {% for col in check_columns %}
+    SELECT 'regain' AS stat_name,
+           '{{ col }}' AS check_name,
+           SUM(CASE WHEN {{ col }} = 0
+                    {% if check_columns|length > 1 %}AND ( {%- for other in check_columns if other != col %}{{ other }} = 1{%- if not loop.last %} AND {% endif %}{% endfor %} ){% endif %}
+                    {%- if bucketable_condition %} AND ( {{ bucketable_condition | replace('c.', '') }} ){% endif %}
                THEN 1 ELSE 0 END) AS cntr
     FROM flags
-    {%- if not loop.last %}UNION ALL{% endif %}
-    {%- endfor %}
+    {% if not loop.last %}UNION ALL{% endif %}
+    {% endfor %}
 
     UNION ALL
 
-    -- Remaining
-    {%- for col in check_columns %}
-    SELECT
-      'remaining' AS stat_name,
-      '{{ col }}' AS check_name,
-      SUM(CASE WHEN {{ col }} = 1
-               {%- for prev in check_columns[:loop.index0] %}AND {{ prev }} = 1{%- endfor %}
+    -- ⑤  Remaining Population (remaining)
+    {% for col in check_columns %}
+    SELECT 'remaining' AS stat_name,
+           '{{ col }}' AS check_name,
+           SUM(CASE WHEN {{ col }} = 1
+                    {%- for prev in check_columns[:loop.index0] %} AND {{ prev }} = 1{%- endfor %}
                THEN 1 ELSE 0 END) AS cntr
     FROM flags
-    {%- if not loop.last %}UNION ALL{% endif %}
-    {%- endfor %}
-) metrics;
+    {% if not loop.last %}UNION ALL{% endif %}
+    {% endfor %}
+) AS metrics;

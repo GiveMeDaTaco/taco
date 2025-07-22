@@ -5,20 +5,24 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="63b14ffc-1efe-4104-8c39-f9067e25e601" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/temp/logic.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/temp/plan" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/example_campaign_poc.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/example_campaign_poc.yaml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/old_waterfall/construct_sql.py" beforeDir="false" afterPath="$PROJECT_DIR$/tlptaco/old_waterfall/construct_sql.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/old_waterfall/construct_sql/waterfall.py" beforeDir="false" afterPath="$PROJECT_DIR$/tlptaco/old_waterfall/construct_sql/waterfall.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/old_waterfall/waterfall.py" beforeDir="false" afterPath="$PROJECT_DIR$/tlptaco/old_waterfall/waterfall.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tests/test_full_campaign_flow.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_full_campaign_flow.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tests/test_full_campaign_yaml_flow.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_full_campaign_yaml_flow.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tlptaco/cli.py" beforeDir="false" afterPath="$PROJECT_DIR$/tlptaco/cli.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tlptaco/config/schema.py" beforeDir="false" afterPath="$PROJECT_DIR$/tlptaco/config/schema.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/logs/tlptaco_poc.debug.log" beforeDir="false" afterPath="$PROJECT_DIR$/logs/tlptaco_poc.debug.log" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/logs/tlptaco_poc.log" beforeDir="false" afterPath="$PROJECT_DIR$/logs/tlptaco_poc.log" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/reports/poc/reports/poc/push/push_list.xlsx" beforeDir="false" afterPath="$PROJECT_DIR$/reports/poc/reports/poc/push/push_list.xlsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/reports/poc/reports/poc/waterfall/waterfall_report_eligibility_poc_customer_id.xlsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/reports/poc/reports/poc/waterfall/waterfall_report_eligibility_poc_customer_id_account_id.xlsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/reports/poc/reports/poc/waterfall/waterfall_report_eligibility_poc_region_id_segment_id.xlsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/temp/logic.txt" beforeDir="false" afterPath="$PROJECT_DIR$/temp/logic.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tlptaco/engines/output.py" beforeDir="false" afterPath="$PROJECT_DIR$/tlptaco/engines/output.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/tlptaco/engines/waterfall.py" beforeDir="false" afterPath="$PROJECT_DIR$/tlptaco/engines/waterfall.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tlptaco/sql/templates/waterfall.sql.j2" beforeDir="false" afterPath="$PROJECT_DIR$/tlptaco/sql/templates/waterfall.sql.j2" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tlptaco/sql/templates/eligibility_01.sql.j2" beforeDir="false" afterPath="$PROJECT_DIR$/temp/eligibility_01.sql.j2" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tlptaco/sql/templates/output_01.sql.j2" beforeDir="false" afterPath="$PROJECT_DIR$/temp/output_01.sql.j2" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tlptaco/sql/templates/waterfall.sql.j2" beforeDir="false" afterPath="$PROJECT_DIR$/temp/waterfall.sql.j2" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/tlptaco/sql/templates/waterfall_full.sql.j2" beforeDir="false" afterPath="$PROJECT_DIR$/tlptaco/sql/templates/waterfall_full.sql.j2" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tlptaco/sql/templates/waterfall_full_01.sql.j2" beforeDir="false" afterPath="$PROJECT_DIR$/temp/waterfall_full_01.sql.j2" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/tlptaco/sql/templates/waterfall_segments.sql.j2" beforeDir="false" afterPath="$PROJECT_DIR$/tlptaco/sql/templates/waterfall_segments.sql.j2" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tlptaco/utils/loading_bar.py" beforeDir="false" afterPath="$PROJECT_DIR$/tlptaco/utils/loading_bar.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -68,6 +72,8 @@
       <recent name="\\wsl.localhost\Ubuntu-22.04\home\taco\projects\recodeWaterfall" />
     </key>
     <key name="MoveFile.RECENT_KEYS">
+      <recent name="\\wsl.localhost\Ubuntu-22.04\home\taco\projects\recodeWaterfall\tlptaco\sql\templates" />
+      <recent name="\\wsl.localhost\Ubuntu-22.04\home\taco\projects\recodeWaterfall\temp" />
       <recent name="\\wsl.localhost\Ubuntu-22.04\home\taco\projects\recodeWaterfall\tlptaco" />
       <recent name="\\wsl.localhost\Ubuntu-22.04\home\taco\projects\recodeWaterfall\tlptaco\deprecated" />
       <recent name="\\wsl.localhost\Ubuntu-22.04\home\taco\projects\recodeWaterfall" />
@@ -156,7 +162,10 @@
       <workItem from="1752537738883" duration="16217000" />
       <workItem from="1752585520767" duration="9691000" />
       <workItem from="1752688941888" duration="21934000" />
-      <workItem from="1752759974095" duration="13921000" />
+      <workItem from="1752759974095" duration="14728000" />
+      <workItem from="1752847049287" duration="4076000" />
+      <workItem from="1752940927269" duration="13136000" />
+      <workItem from="1753113987285" duration="18245000" />
     </task>
     <servers />
   </component>
@@ -166,6 +175,6 @@
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
     <SUITE FILE_PATH="coverage/recodeWaterfall$prep_test_db_poc.coverage" NAME="prep_test_db_poc Coverage Results" MODIFIED="1752523256485" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/recodeWaterfall$cli.coverage" NAME="cli Coverage Results" MODIFIED="1752343868771" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/tlptaco" />
-    <SUITE FILE_PATH="coverage/recodeWaterfall$debug_tlptaco_cli.coverage" NAME="debug tlptaco.cli Coverage Results" MODIFIED="1752726314003" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="" />
+    <SUITE FILE_PATH="coverage/recodeWaterfall$debug_tlptaco_cli.coverage" NAME="debug tlptaco.cli Coverage Results" MODIFIED="1753156477361" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="" />
   </component>
 </project>
