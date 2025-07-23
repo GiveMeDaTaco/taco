@@ -5,18 +5,35 @@ connection required).
 The test mimics the CLI flow, but swaps the DB runner for a dummy that merely
 captures SQL strings.  Each captured statement is then fed through
 ``sqlglot.parse_one(..., read="teradata")`` which raises ``ParseError`` on any
-syntax issue (e.g., the dreaded "FROM flagsUNION ALL").
+syntax issue (e.g., the dreaded "FROM flagsUNION ALL").  As an additional
+guard, each statement is also fed through **sqlfluff**'s Teradata dialect
+parser; any parsing violations there will likewise fail the test.
 """
 
 from pathlib import Path
 
+# ---------------------------------------------------------------------------
+# Test ensures that all generated Waterfall SQL is *syntactically valid* for
+# the Teradata dialect under **both** sqlglot *and* sqlfluff.  This provides
+# two independent parsers / linters, catching issues that might slip through
+# only one of them.
+# ---------------------------------------------------------------------------
+
 import pandas as pd  # noqa – used in DummyRunner.to_df
 import pytest
 
+# sqlglot is used for fast structural parsing ------------------------------------------------
 try:
-    import sqlglot
+    import sqlglot  # type: ignore
 except ImportError:  # pragma: no cover – guard if dependency missing
     sqlglot = None
+
+# sqlfluff provides a dialect-aware SQL linter / parser -----------------------
+try:
+    from sqlfluff.core import Linter as _SQLFluffLinter  # type: ignore
+except ImportError:  # pragma: no cover – guard if dependency missing
+    _SQLFluffLinter = None
+
 
 from tlptaco.config.loader import load_config
 from tlptaco.engines.eligibility import EligibilityEngine
@@ -47,9 +64,10 @@ class DummyRunner(DBRunner):
         pass
 
 
-@pytest.mark.skipif(sqlglot is None, reason="sqlglot not installed")
+@pytest.mark.skipif(sqlglot is None and _SQLFluffLinter is None,
+                    reason="Neither sqlglot nor sqlfluff is installed")
 def test_waterfall_sql_parses_for_teradata():
-    """Render waterfall SQL for the POC campaign and parse with sqlglot."""
+    """Render waterfall SQL for the POC campaign and parse with sqlglot & sqlfluff."""
 
     # Path to the POC config located at project root
     cfg_path = Path(__file__).resolve().parent.parent / "example_campaign_poc.yaml"
@@ -69,9 +87,29 @@ def test_waterfall_sql_parses_for_teradata():
 
     assert dummy.statements, "No SQL captured from WaterfallEngine run()"
 
+    # --------------------------------------------------------------
+    # Initialise sqlfluff linter once (if available) – this is
+    # relatively expensive so we reuse the same instance.
+    # --------------------------------------------------------------
+    if _SQLFluffLinter is not None:
+        _linter = _SQLFluffLinter(dialect="teradata")
+    else:
+        _linter = None  # type: ignore
+
     for stmt in dummy.statements:
-        # sqlglot raises ParseError on invalid syntax
-        try:
-            sqlglot.parse_one(stmt, read="teradata")
-        except sqlglot.errors.ParseError as err:  # pragma: no cover
-            pytest.fail(f"Teradata syntax error detected in SQL:\n{stmt}\n\n{err}")
+        # -- First layer: sqlglot ------------------------------------------------
+        if sqlglot is not None:
+            try:
+                sqlglot.parse_one(stmt, read="teradata")
+            except sqlglot.errors.ParseError as err:  # pragma: no cover
+                pytest.fail(
+                    f"Teradata syntax error detected by sqlglot in SQL:\n{stmt}\n\n{err}")
+
+        # -- Second layer: sqlfluff --------------------------------------------
+        if _linter is not None:
+            parsed = _linter.parse_string(stmt)
+            variant = parsed.root_variant()
+            if variant.parsing_violations:  # pragma: no cover – shouldn't happen
+                msgs = " | ".join(str(v) for v in variant.parsing_violations)
+                pytest.fail(
+                    f"Teradata syntax error detected by sqlfluff in SQL:\n{stmt}\n\n{msgs}")

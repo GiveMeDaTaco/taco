@@ -1,25 +1,33 @@
--- Waterfall Report – Non-BA Segments (Claim-and-Exclude pattern)
+-- Waterfall Report – Non-BA Segments (claim & exclude logic)
 -- ---------------------------------------------------------------------------
--- For a set of ordered *segments* we need to:
---   •  Claim the population for each segment sequentially (i.e., once a record
---      is claimed by an earlier segment it is *excluded* from later ones).
---   •  Within the unclaimed pool, run the 5-metric waterfall on that segment’s
---      check list.
---   •  All statistics are produced on a *deduplicated* view of the
---      eligibility table using the same heuristic as waterfall_full.sql.j2.
+--  Requirements distilled from temp/logic.txt
+--  -------------------------------------------------------------
+--  • Process the ordered list of *segments* for a channel.
+--  • For each segment N
+--        – Candidate pool   = population that has NOT been bucketed by a
+--                              previous segment (N-1, N-2, …).
+--        – Claimed rows     = subset of candidate pool that passes the
+--                              segment’s summary condition.
+--        – Produce 6 rows of output:
+--              0. section="<seg name>", stat_name='Records Claimed'
+--              1-5 waterfall metrics (unique_drops, incremental_drops,
+--                 cumulative_drops, regain, remaining) evaluated **on the
+--                 candidate pool**, not on claimed rows.
 --
--- Context variables (supplied by WaterfallEngine):
---   eligibility_table : smart eligibility table (alias c)
---   unique_identifiers: list[str] id columns
---   pre_filter        : SQL predicate that EVERY row in this channel must meet
---   segments          : list[dict]  Each element contains
---                         • name             – display label
---                         • checks           – list[str] of flag columns
---                         • summary_column   – full SQL predicate that defines
---                                              the *bucket* for the segment
+--  Context provided by WaterfallEngine
+--  -------------------------------------------------------------
+--    eligibility_table   – smart table (aliased as c in conditions)
+--    unique_identifiers  – list[str]  id columns (possibly qualified)
+--    pre_filter          – SQL predicate satisfied by *every* row that
+--                          reaches this template (main BA + channel BA)
+--    segments            – ordered list of dicts
+--                            name           – display label
+--                            checks         – list[str] flag column names
+--                            summary_column – SQL predicate defining the
+--                                            bucket for the segment
 -- ---------------------------------------------------------------------------
 
-{# Extract naked identifier column names once for reuse #}
+{# Strip aliases from UID list for later convenience #}
 {% set uid_cols = [] %}
 {% for _uid in unique_identifiers %}
     {% set _ = uid_cols.append(_uid.split('.')[-1]) %}
@@ -27,165 +35,132 @@
 
 WITH base_population AS (
     SELECT *
-    FROM {{ eligibility_table }} c
+    FROM {{ eligibility_table }} AS c         -- ▼ added AS
     WHERE {{ pre_filter }}
 ),
 
--- Deduplicate on unique identifiers (same strategy as full waterfall).
--- Build an overall OR-condition to flag if a row is bucketable by *any* segment
-{% set bucketable_expr = segments | map(attribute='summary_column') | join(' OR ') %}
+-- ---------------------------------------------------------------------------
+-- Deduplication (same tie-break rules as full waterfall)
+-- ---------------------------------------------------------------------------
+
+{% set all_seg_checks = [] %}
+{% for seg in segments %}
+    {% for chk in seg.checks %}{% set _ = all_seg_checks.append(chk) %}{% endfor %}
+{% endfor %}
 
 deduped AS (
-    SELECT *
-    FROM (
+    SELECT * FROM (
         SELECT bp.*,
-               {% for seg in segments %}
-                   ( {%- for chk in seg.checks %}{{ chk }}{%- if not loop.last %} + {% endif %}{% endfor %} ){%- if not loop.last %} + {% endif %}
-               {%- endfor %} AS pass_cnt,
-               CASE WHEN {{ bucketable_expr | replace('c.', '') }} THEN 1 ELSE 0 END AS bucketable,
-               -- Longest unbroken streak of passes across all segment checks (left-to-right within each seg order)
+               -- total passes in *all* non-BA checks (used for ranking)
+               {% for chk in all_seg_checks %}{{ chk }}{%- if not loop.last %}+{% endif %}{% endfor %} AS pass_cnt,   -- ▼ opening tag no “-”
+               -- longest left-to-right streak of passes across all checks
                (
-                   {% set all_checks = [] %}
-                   {% for seg in segments %}{% for chk in seg.checks %}{% set _ = all_checks.append(chk) %}{% endfor %}{% endfor %}
-                   {% for i in range(all_checks|length) %}
-                       {%- for j in range(i+1) %}{{ all_checks[j] }}{% if j < i %} * {% endif %}{% endfor %}
+                   {% for i in range(all_seg_checks|length) %}
+                       {%- for j in range(i+1) %}{{ all_seg_checks[j] }}{% if j < i %} * {% endif %}{% endfor %}
                        {%- if not loop.last %} + {% endif %}
                    {% endfor %}
                ) AS streak_len,
                ROW_NUMBER() OVER (
                    PARTITION BY {{ uid_cols | join(', ') }}
-                   ORDER BY bucketable DESC, pass_cnt DESC, streak_len DESC
+                   ORDER BY pass_cnt DESC, streak_len DESC
                ) AS _rn
-        FROM base_population bp
-    ) x
+        FROM base_population AS bp            -- ▼ added AS
+    ) t
     WHERE _rn = 1
 ),
 
--- Helper CTE to expose a “claimed_by” flag for every segment so that later
--- segments can exclude previously claimed rows.
+-- ---------------------------------------------------------------------------
+-- Build per-segment candidate & claimed CTEs
+-- ---------------------------------------------------------------------------
+
 {% for seg in segments %}
 {% set idx = loop.index0 %}
-seg_{{ idx }} AS (
-    SELECT d.*
-    FROM deduped d
+
+seg_pool_{{ idx }} AS (
+    SELECT *
+    FROM deduped AS d                          -- ▼ added AS
+    {# Exclude anything claimed by earlier segments #}
+    {% if idx > 0 %}
+    WHERE {% for prev in segments[:idx] %}
+              NOT ( {{ prev.summary_column | replace('c.', '') }} )
+              {% if not loop.last %}AND{% endif %}
+          {% endfor %}
+    {% endif %}
+),
+
+seg_claim_{{ idx }} AS (
+    SELECT *
+    FROM seg_pool_{{ idx }} AS sp              -- ▼ added AS
     WHERE {{ seg.summary_column | replace('c.', '') }}
-      {%- for prev in segments[:idx] %}
-        AND NOT {{ prev.summary_column | replace('c.', '') }}
-      {%- endfor %}
 ){% if not loop.last %},
 {% endif %}
+
 {% endfor %}
 
 -- ---------------------------------------------------------------------------
--- The final SELECTs – for each segment output:
---   •  Row 0  – “Records Claimed” (size of pool claimed by the segment)
---   •  Rows 1+ – 5 waterfall metrics for each check (duplicated logic from
---                waterfall_full template but scoped to the segment)
+-- Final SELECT block – emit claimed size + 5-metric waterfall per segment
 -- ---------------------------------------------------------------------------
 
 {% for seg in segments %}
 {% set idx = loop.index0 %}
--- >>> Segment: {{ seg.name }} -------------------------------------------------
--- Claim size
-SELECT '{{ seg.name }}'   AS section,
-       'Records Claimed'  AS stat_name,
-       NULL               AS check_name,
-       COUNT(*)           AS cntr
-FROM seg_{{ idx }}
+{% set check_cols = seg.checks %}
+
+-- >>> Segment: {{ seg.name }} ------------------------------------------------
+-- Row 0 – records claimed by the segment
+SELECT '{{ seg.name }}'  AS section,
+       'Records Claimed' AS stat_name,
+       NULL              AS check_name,
+       COUNT(*)          AS cntr
+FROM seg_claim_{{ idx }}
 
 UNION ALL
 
--- Waterfall metrics for the segment’s checks
-{% set check_cols = seg.checks %}
-{% set check_sum = ' + '.join(check_cols) if check_cols else '0' %}
-
-
-SELECT stat_name,
+-- Metrics evaluated on the *candidate* pool (seg_pool)
+SELECT section,
+       stat_name,
        check_name,
-       cntr,
-       '{{ seg.name }}' AS section
+       cntr
 FROM (
-    -- unique_drops
+    {% for metric in ['unique_drops','incremental_drops','cumulative_drops','regain','remaining'] %}
     {% for col in check_cols %}
-    SELECT 'unique_drops' AS stat_name, '{{ col }}' AS check_name,
-           SUM(CASE WHEN {{ col }} = 0
-                    {% if check_cols|length > 1 %}AND ( {%- for other in check_cols if other != col %}{{ other }} = 1{%- if not loop.last %} AND {% endif %}{% endfor %} ){% endif %}
-               THEN 1 ELSE 0 END)
+    {% set col_idx = loop.index0 %}
+    SELECT '{{ seg.name }}'                             AS section,
+           '{{ metric }}'                              AS stat_name,
+           '{{ col }}'                                 AS check_name,
+           SUM(
+               CASE
+                   {% if metric == 'unique_drops' %}
+                       WHEN {{ col }} = 0
+                            {%- if check_cols|length > 1 %} AND ({% for other in check_cols if other != col %} {{ other }} = 1 {% if not loop.last %}AND{% endif %}{% endfor %}){% endif %}
+                       THEN 1
+                   {% elif metric == 'incremental_drops' %}
+                       WHEN {{ col }} = 0
+                            {%- for prev in check_cols[:col_idx] %} AND {{ prev }} = 1{% endfor %}
+                       THEN 1
+                   {% elif metric == 'cumulative_drops' %}
+                       WHEN NOT ( {% for prev in check_cols[:col_idx+1] %} {{ prev }} = 1 {% if not loop.last %}AND{% endif %}{% endfor %} )
+                       THEN 1
+                   {% elif metric == 'regain' %}
+                       WHEN {{ col }} = 0
+                            {%- for other in check_cols if other != col %} AND {{ other }} = 1{% endfor %}
+                       THEN 1
+                   {% elif metric == 'remaining' %}
+                       WHEN {% for prev in check_cols[:col_idx+1] %} {{ prev }} = 1 {% if not loop.last %}AND{% endif %}{% endfor %}
+                       THEN 1
+                   {% endif %}
+                   ELSE 0
+               END
+           ) AS cntr
     FROM (
         SELECT {% for uid in uid_cols %}{{ uid }}{{ "," if not loop.last }}{% endfor %}
                {%- if check_cols %}, {% endif %}
-               {% for col in check_cols %}{{ col }}{{ "," if not loop.last }}{% endfor %}
-        FROM seg_{{ idx }}
+               {% for chk in check_cols %}{{ chk }}{{ "," if not loop.last }}{% endfor %}
+        FROM seg_pool_{{ idx }}
     ) AS flags({{ (uid_cols + check_cols)|join(', ') }})
-    {% if not loop.last %}UNION ALL{% endif %}
-    {% endfor %}
-
+    {% if not (metric == 'remaining' and col_idx == check_cols|length -1) %}
     UNION ALL
-
-    -- incremental_drops
-    {% for col in check_cols %}
-    SELECT 'incremental_drops' AS stat_name, '{{ col }}' AS check_name,
-           SUM(CASE WHEN {{ col }} = 0
-                    {%- for prev in check_cols[:loop.index0] %} AND {{ prev }} = 1{%- endfor %}
-               THEN 1 ELSE 0 END)
-    FROM (
-        SELECT {% for uid in uid_cols %}{{ uid }}{{ "," if not loop.last }}{% endfor %}
-               {%- if check_cols %}, {% endif %}
-               {% for col in check_cols %}{{ col }}{{ "," if not loop.last }}{% endfor %}
-        FROM seg_{{ idx }}
-    ) AS flags({{ (uid_cols + check_cols)|join(', ') }})
-    {% if not loop.last %}UNION ALL{% endif %}
+    {% endif %}
     {% endfor %}
-
-    UNION ALL
-
-    -- cumulative_drops
-    {% for col in check_cols %}
-    SELECT 'cumulative_drops' AS stat_name, '{{ col }}' AS check_name,
-           COUNT(*) - SUM(CASE WHEN {{ col }} = 1
-                              {%- for prev in check_cols[:loop.index0] %} AND {{ prev }} = 1{%- endfor %}
-                         THEN 1 ELSE 0 END)
-    FROM (
-        SELECT {% for uid in uid_cols %}{{ uid }}{{ "," if not loop.last }}{% endfor %}
-               {%- if check_cols %}, {% endif %}
-               {% for col in check_cols %}{{ col }}{{ "," if not loop.last }}{% endfor %}
-        FROM seg_{{ idx }}
-    ) AS flags({{ (uid_cols + check_cols)|join(', ') }})
-    {% if not loop.last %}UNION ALL{% endif %}
-    {% endfor %}
-
-    UNION ALL
-
-    -- regain
-    {% for col in check_cols %}
-    SELECT 'regain' AS stat_name, '{{ col }}' AS check_name,
-           SUM(CASE WHEN {{ col }} = 0
-                    {% if check_cols|length > 1 %}AND ( {%- for other in check_cols if other != col %}{{ other }} = 1{%- if not loop.last %} AND {% endif %}{% endfor %} ){% endif %}
-               THEN 1 ELSE 0 END)
-    FROM (
-        SELECT {% for uid in uid_cols %}{{ uid }}{{ "," if not loop.last }}{% endfor %}
-               {%- if check_cols %}, {% endif %}
-               {% for col in check_cols %}{{ col }}{{ "," if not loop.last }}{% endfor %}
-        FROM seg_{{ idx }}
-    ) AS flags({{ (uid_cols + check_cols)|join(', ') }})
-    {% if not loop.last %}UNION ALL{% endif %}
-    {% endfor %}
-
-    UNION ALL
-
-    -- remaining
-    {% for col in check_cols %}
-    SELECT 'remaining' AS stat_name, '{{ col }}' AS check_name,
-           SUM(CASE WHEN {{ col }} = 1
-                    {%- for prev in check_cols[:loop.index0] %} AND {{ prev }} = 1{%- endfor %}
-               THEN 1 ELSE 0 END)
-    FROM (
-        SELECT {% for uid in uid_cols %}{{ uid }}{{ "," if not loop.last }}{% endfor %}
-               {%- if check_cols %}, {% endif %}
-               {% for col in check_cols %}{{ col }}{{ "," if not loop.last }}{% endfor %}
-        FROM seg_{{ idx }}
-    ) AS flags({{ (uid_cols + check_cols)|join(', ') }})
-    {% if not loop.last %}UNION ALL{% endif %}
     {% endfor %}
 ) AS metrics
 
