@@ -133,9 +133,27 @@ class EligibilityConfig(BaseModel):
             )
         return v
 
+# -----------------------------------------------------------------------------
+# Waterfall configuration & history tracking
+# -----------------------------------------------------------------------------
+
+
+class WaterfallHistoryConfig(BaseModel):
+    """Optional SQLite history tracking for each waterfall run."""
+
+    # Toggle history tracking on / off (default off for backwards-compat)
+    track: bool = False
+    # Optional explicit path to the SQLite DB (directory will be created).
+    # When *None*, a file named ``waterfall_history.sqlite`` is created
+    # inside ``waterfall.output_directory``.
+    db_path: Optional[str] = None
+
+
 class WaterfallConfig(BaseModel):
     output_directory: str
     count_columns: List[Union[str, List[str]]]
+    # New nested history configuration with sane defaults
+    history: WaterfallHistoryConfig = WaterfallHistoryConfig()
 
 class OutputChannelConfig(BaseModel):
     columns: List[str]

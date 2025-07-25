@@ -75,9 +75,9 @@ SELECT
     cntr
 FROM (
     -- Starting population (row 0)
-    SELECT 'initial_population' AS stat_name,
-           'Total'            AS check_name,
-           COUNT(*)           AS cntr
+    SELECT CAST('initial_population' AS VARCHAR(50))    AS stat_name,
+           CAST('Total' AS VARCHAR(50))                 AS check_name,
+           COUNT(*)                                     AS cntr
     FROM flags
 
     UNION ALL

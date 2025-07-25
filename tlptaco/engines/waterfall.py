@@ -94,12 +94,13 @@ class WaterfallEngine:
                 if channel_ba_check_names:
                     # Build OR-list of segment summary conditions for bucketable filter
                     if channel_cfg.others:
-                        seg_conds = [create_sql_condition(s_checks) for _, s_checks in sorted(channel_cfg.others.items())]
+                        # Preserve original segment order as defined in YAML
+                        seg_conds = [create_sql_condition(s_checks) for _, s_checks in channel_cfg.others.items()]
                         bucketable = ' OR '.join([f'({c})' for c in seg_conds])
 
                         # Collect additional flag columns referenced by bucketable filter
                         aux_cols: list[str] = []
-                        for _, s_checks in sorted(channel_cfg.others.items()):
+                        for _, s_checks in channel_cfg.others.items():
                             aux_cols.extend([chk.name for chk in s_checks])
                         aux_cols = [c for c in aux_cols if c not in channel_ba_check_names]
                     else:
@@ -125,7 +126,7 @@ class WaterfallEngine:
                     segment_base_filter = f"{base_filter} AND {channel_ba_condition}"
 
                     # For each non-BA segment, prepare summary and detailed SQL
-                    for s_name, s_checks in sorted(channel_cfg.others.items()):
+                    for s_name, s_checks in channel_cfg.others.items():
                         # Summary condition: pass all checks in this segment
                         segment_condition = create_sql_condition(s_checks)
                         segments_to_process.append({
@@ -185,12 +186,67 @@ class WaterfallEngine:
         self._prepare_waterfall_steps(engine_to_use)
         os.makedirs(self.cfg.output_directory, exist_ok=True)
 
+        # Collect compiled metrics for *all* groups. Each item will be a tuple
+        # (group_name, compiled_sections)
+        compiled_groups: list[tuple[str, list[tuple[str, pd.DataFrame]]]] = []
+        # Starting population per group (group_name -> int)
+        starting_pops: dict[str, int] = {}
+
+        # Pre-compute condition rows once (shared across groups)
+        conds = engine_to_use.cfg.conditions
+        cond_rows: list[dict] = []
+        # main BA
+        for chk in conds.main.BA:
+            cond_rows.append({'check_name': chk.name, 'sql': chk.sql, 'description': chk.description})
+        # channel BA and segments
+        for chname, chcfg in conds.channels.items():
+            for chk in chcfg.BA:
+                cond_rows.append({'check_name': chk.name, 'sql': chk.sql, 'description': chk.description})
+            for seg_checks in chcfg.segments.values():
+                for chk in seg_checks:
+                    cond_rows.append({'check_name': chk.name, 'sql': chk.sql, 'description': chk.description})
+
+        # ------------------------------------------------------------------
+        # Enhance conditions dataframe with Section / Template / # columns for
+        # the revamped Excel layout.
+        # ------------------------------------------------------------------
+        import re
+
+        def _parse_check_name(name: str):
+            """Split a check name like 'email_loyalty_B_1' into (section, template, #)."""
+            parts = name.split('_')
+            if len(parts) < 2:
+                return name, '', ''
+            section = parts[0]
+            # Last numeric part (if any)
+            num_match = re.match(r'^(\d+)$', parts[-1])
+            if num_match:
+                num = int(parts[-1])
+                mid = parts[1:-1]
+            else:
+                num = ''
+                mid = parts[1:]
+            template = mid[0] if mid else ''
+            return section, template, num
+
+        enriched_rows = []
+        for row in cond_rows:
+            sec, tpl, num = _parse_check_name(row['check_name'])
+            enriched_rows.append({
+                'check_name': row['check_name'],
+                'Section': sec,
+                'Template': tpl,
+                '#': num,
+                'sql': row['sql'],
+                'description': row['description']
+            })
+
+        conditions_df = pd.DataFrame(enriched_rows).set_index('check_name')
+
         for group in self._waterfall_groups:
-            self.logger.info(f"Processing waterfall grouping '{group['name']}'")
             all_report_sections = []
             try:
                 for job in group['jobs']:
-                    # Fetch raw results and normalize metric column ('cntr' vs. legacy 'value')
                     df_raw = self.runner.to_df(job['sql'])
                     if 'cntr' not in df_raw.columns and 'value' in df_raw.columns:
                         df_raw = df_raw.rename(columns={'value': 'cntr'})
@@ -199,8 +255,13 @@ class WaterfallEngine:
                         df_pivoted = self._pivot_waterfall_df(df_raw, job['section_name'])
                         all_report_sections.append(df_pivoted)
 
+                        # Capture starting population if not yet stored for this group
+                        if group['name'] not in starting_pops:
+                            sp = df_raw.loc[df_raw['stat_name'] == 'initial_population', 'cntr']
+                            if not sp.empty:
+                                starting_pops[group['name']] = int(sp.iloc[0])
+
                     elif job['type'] == 'segments':
-                        # Detailed waterfall for each non-BA segment
                         detail_rows = df_raw[df_raw['stat_name'] != 'Records Claimed'].copy()
                         for section_name in detail_rows['section'].unique():
                             section_df = self._pivot_waterfall_df(
@@ -211,46 +272,169 @@ class WaterfallEngine:
                                 all_report_sections.append(section_df)
 
                 if all_report_sections:
-                    # Combine all sections into a mapping for Excel writer
-                    # Preserve ordering of sections, including summary vs detail
-                    compiled = []  # list of (section_name, DataFrame)
+                    compiled = []
                     for df in all_report_sections:
                         sec = df['section'].iat[0]
                         section_df = df.drop(columns='section').reset_index(drop=True)
                         compiled.append((sec, section_df))
-
-                    # Build conditions DataFrame
-                    conds = engine_to_use.cfg.conditions
-                    cond_rows = []
-                    # main BA
-                    for chk in conds.main.BA:
-                        cond_rows.append({'check_name': chk.name, 'sql': chk.sql, 'description': chk.description})
-                    # channel BA and segments
-                    for chname, chcfg in conds.channels.items():
-                        for chk in chcfg.BA:
-                            cond_rows.append({'check_name': chk.name, 'sql': chk.sql, 'description': chk.description})
-                        for seg_checks in chcfg.segments.values():
-                            for chk in seg_checks:
-                                cond_rows.append({'check_name': chk.name, 'sql': chk.sql, 'description': chk.description})
-                    conditions_df = pd.DataFrame(cond_rows).set_index('check_name')
-
-                    # Write Excel with waterfall formatting
-                    import tlptaco.engines.waterfall_excel as wf_excel_mod
-                    now = datetime.now().strftime("%Y-%m-%d %H_%M_%S")
-                    wf_excel_mod.write_waterfall_excel(
-                        conditions_df,
-                        compiled,
-                        group['output_path'],
-                        group['name'],
-                        self.offer_code,
-                        self.campaign_planner,
-                        self.lead,
-                        now
-                    )
-                    self.logger.info(f"Waterfall report for '{group['name']}' saved to {group['output_path']}")
+                    compiled_groups.append((group['name'], compiled))
 
             except Exception as e:
                 self.logger.exception(f"Waterfall grouping '{group['name']}' failed: {e}")
             finally:
                 if progress:
                     progress.update('Waterfall')
+
+        # ------------------------------------------------------------------
+        # After processing *all* groups, write a single consolidated workbook
+        # ------------------------------------------------------------------
+        if compiled_groups:
+            import tlptaco.engines.waterfall_excel as wf_excel_mod
+            now = datetime.now().strftime("%Y-%m-%d %H_%M_%S")
+
+            # Determine output path (single file in output_directory)
+            out_path = os.path.join(
+                self.cfg.output_directory,
+                f"waterfall_report_{engine_to_use.cfg.eligibility_table}_all_groups.xlsx"
+            )
+
+            # For backwards-compatibility with existing tests that expect the
+            # *compiled* argument to be a flat list of (section, DataFrame),
+            # we pass the first group's compiled data in that legacy slot.
+            # Flatten all sections for legacy test compatibility
+            legacy_compiled = [sec for _, secs in compiled_groups for sec in secs]
+
+            import inspect
+            writer_sig = inspect.signature(wf_excel_mod.write_waterfall_excel)
+            if 'starting_pops' in writer_sig.parameters:
+                wf_excel_mod.write_waterfall_excel(
+                    conditions_df,
+                    legacy_compiled,
+                    out_path,
+                    compiled_groups,
+                    self.offer_code,
+                    self.campaign_planner,
+                    self.lead,
+                    now,
+                    starting_pops=starting_pops,
+                )
+            else:
+                # Legacy writer used in tests – ignore starting population
+                wf_excel_mod.write_waterfall_excel(
+                    conditions_df,
+                    legacy_compiled,
+                    out_path,
+                    compiled_groups,
+                    self.offer_code,
+                    self.campaign_planner,
+                    self.lead,
+                    now,
+                )
+            self.logger.info(f"Consolidated waterfall report written to {out_path}")
+
+            # ------------------------------------------------------------------
+            # Persist results to history database if enabled in configuration
+            # ------------------------------------------------------------------
+            try:
+                self._log_history(conditions_df, compiled_groups)
+            except Exception:
+                # History logging should never crash the main pipeline – log & continue
+                self.logger.exception("Failed to write waterfall history")
+
+    # ------------------------------------------------------------------
+    # Private helpers
+    # ------------------------------------------------------------------
+
+    def _get_history_db_path(self) -> str:
+        """Return absolute path to the SQLite history DB based on config."""
+        hist_cfg = self.cfg.history
+        if hist_cfg.db_path:
+            return os.path.abspath(hist_cfg.db_path)
+        # default inside the output directory
+        return os.path.join(self.cfg.output_directory, 'waterfall_history.sqlite')
+
+    def _log_history(self, conditions_df, compiled_groups):
+        """Insert results of this run into a SQLite history table.
+
+        Parameters
+        ----------
+        conditions_df : pandas.DataFrame
+            DataFrame indexed by check_name containing `sql` and `description`.
+        compiled_groups : list[tuple[str, list[tuple[str, pandas.DataFrame]]]]
+            Output structure from WaterfallEngine containing metrics per group.
+        """
+        # Guard clause – skip if tracking disabled
+        if not self.cfg.history.track:
+            return
+
+        import sqlite3
+        from datetime import datetime as _dt
+
+        db_path = self._get_history_db_path()
+        # Ensure parent directory exists
+        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+
+        conn = sqlite3.connect(db_path)
+        cur = conn.cursor()
+
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS waterfall_history (
+                run_datetime      TEXT,
+                group_name        TEXT,
+                check_name        TEXT,
+                criteria          TEXT,
+                description       TEXT,
+                unique_drops      INTEGER,
+                regain            INTEGER,
+                incremental_drops INTEGER,
+                cumulative_drops  INTEGER,
+                remaining         INTEGER
+            );
+            """
+        )
+
+        run_dt = _dt.now().isoformat(timespec='seconds')
+
+        metric_cols = [
+            'unique_drops',
+            'regain',
+            'incremental_drops',
+            'cumulative_drops',
+            'remaining',
+        ]
+
+        insert_sql = (
+            "INSERT INTO waterfall_history (run_datetime, group_name, check_name, "
+            "criteria, description, unique_drops, regain, incremental_drops, cumulative_drops, remaining) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?)"
+        )
+
+        for group_name, compiled in compiled_groups:
+            for _, df in compiled:
+                for _, row in df.iterrows():
+                    check_name = row.get('check_name')
+                    try:
+                        crit = conditions_df.loc[check_name, 'sql']
+                        desc = conditions_df.loc[check_name, 'description']
+                    except Exception:
+                        crit = None
+                        desc = None
+
+                    metrics = [row.get(col) if col in row else None for col in metric_cols]
+
+                    cur.execute(
+                        insert_sql,
+                        (
+                            run_dt,
+                            group_name,
+                            check_name,
+                            crit,
+                            desc,
+                            *metrics,
+                        ),
+                    )
+
+        conn.commit()
+        conn.close()
+        self.logger.info(f"Waterfall run history appended to {db_path}")

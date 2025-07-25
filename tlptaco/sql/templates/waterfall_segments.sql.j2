@@ -107,10 +107,10 @@ seg_claim_{{ idx }} AS (
 
 -- >>> Segment: {{ seg.name }} ------------------------------------------------
 -- Row 0 – records claimed by the segment
-SELECT '{{ seg.name }}'  AS section,
-       'Records Claimed' AS stat_name,
-       NULL              AS check_name,
-       COUNT(*)          AS cntr
+SELECT CAST('{{ seg.name }}' AS VARCHAR(50))    AS section,
+       CAST('Records Claimed' AS VARCHAR(50))   AS stat_name,
+       CAST('' AS VARCHAR(50))                  AS check_name,
+       COUNT(*)                                 AS cntr
 FROM seg_claim_{{ idx }}
 
 UNION ALL

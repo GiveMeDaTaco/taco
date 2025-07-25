@@ -67,7 +67,7 @@ class OutputEngine:
 
             # Case 2: Other segments (sorted by priority as defined in YAML)
             if channel_elig_cfg.others:
-                for segment_name, segment_checks in sorted(channel_elig_cfg.others.items()):
+                for segment_name, segment_checks in channel_elig_cfg.others.items():
                     segment_condition = create_sql_condition(segment_checks)
 
                     # Conditions for this segment include main BA, channel BA, and the segment's own checks
