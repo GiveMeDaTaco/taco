@@ -101,20 +101,21 @@ def test_full_campaign_flow(tmp_path, monkeypatch):
     # Monkeypatch write_waterfall_excel to capture output without writing files
     from tlptaco.engines.waterfall_excel import write_waterfall_excel as real_writer
     captured = {}
-    def fake_writer(conditions_df, compiled, output_path, group_name,
-                     offer_code, campaign_planner, lead, current_date):
+    def fake_writer(conditions_df, compiled_current, output_path, *, previous=None,
+                     offer_code='', campaign_planner='', lead='', current_date='', starting_pops=None):
         captured['path'] = output_path
-        captured['compiled'] = compiled
+        captured['compiled'] = compiled_current
     monkeypatch.setattr('tlptaco.engines.waterfall_excel.write_waterfall_excel', fake_writer)
     # Run waterfall report
     wf_engine.run(elig_engine)
     # Verify an Excel path was generated under output_directory
     assert str(tmp_path) in captured.get('path', '')
     # compiled is list of (section_name, DataFrame) tuples
-    compiled = captured.get('compiled', [])
-    assert compiled, "No compiled output captured"
-    # Inspect the first section's DataFrame
-    section_name, df_out = compiled[0]
+    compiled_groups = captured.get('compiled', [])
+    assert compiled_groups, "No compiled output captured"
+    # Use the first group's first section for inspection
+    first_group_sections = compiled_groups[0][1]
+    section_name, df_out = first_group_sections[0]
     # It should include check_name and the new metrics columns
     assert 'chk1' in df_out['check_name'].values
     assert 'unique_drops' in df_out.columns

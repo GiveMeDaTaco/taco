@@ -192,6 +192,10 @@ class WaterfallEngine:
         # Starting population per group (group_name -> int)
         starting_pops: dict[str, int] = {}
 
+        # Holder for *previous* runs fetched from SQLite history so that the
+        # Excel writer can render side-by-side comparison tabs.
+        previous_groups: dict[str, list[tuple[str, pd.DataFrame]]] = {}
+
         # Pre-compute condition rows once (shared across groups)
         conds = engine_to_use.cfg.conditions
         cond_rows: list[dict] = []
@@ -279,6 +283,14 @@ class WaterfallEngine:
                         compiled.append((sec, section_df))
                     compiled_groups.append((group['name'], compiled))
 
+                    # --------------------------------------------------
+                    # Attempt to fetch a *previous* snapshot for this
+                    # group from the history DB (if available).
+                    # --------------------------------------------------
+                    prev_compiled = self._fetch_previous_group_metrics(group['name'])
+                    if prev_compiled:
+                        previous_groups[group['name']] = prev_compiled
+
             except Exception as e:
                 self.logger.exception(f"Waterfall grouping '{group['name']}' failed: {e}")
             finally:
@@ -292,44 +304,23 @@ class WaterfallEngine:
             import tlptaco.engines.waterfall_excel as wf_excel_mod
             now = datetime.now().strftime("%Y-%m-%d %H_%M_%S")
 
-            # Determine output path (single file in output_directory)
+            # Determine output path for workbook
             out_path = os.path.join(
                 self.cfg.output_directory,
-                f"waterfall_report_{engine_to_use.cfg.eligibility_table}_all_groups.xlsx"
+                f"waterfall_report_{engine_to_use.cfg.eligibility_table}_all_groups.xlsx",
             )
 
-            # For backwards-compatibility with existing tests that expect the
-            # *compiled* argument to be a flat list of (section, DataFrame),
-            # we pass the first group's compiled data in that legacy slot.
-            # Flatten all sections for legacy test compatibility
-            legacy_compiled = [sec for _, secs in compiled_groups for sec in secs]
-
-            import inspect
-            writer_sig = inspect.signature(wf_excel_mod.write_waterfall_excel)
-            if 'starting_pops' in writer_sig.parameters:
-                wf_excel_mod.write_waterfall_excel(
-                    conditions_df,
-                    legacy_compiled,
-                    out_path,
-                    compiled_groups,
-                    self.offer_code,
-                    self.campaign_planner,
-                    self.lead,
-                    now,
-                    starting_pops=starting_pops,
-                )
-            else:
-                # Legacy writer used in tests – ignore starting population
-                wf_excel_mod.write_waterfall_excel(
-                    conditions_df,
-                    legacy_compiled,
-                    out_path,
-                    compiled_groups,
-                    self.offer_code,
-                    self.campaign_planner,
-                    self.lead,
-                    now,
-                )
+            wf_excel_mod.write_waterfall_excel(
+                conditions_df,
+                compiled_groups,
+                out_path,
+                previous=previous_groups,
+                offer_code=self.offer_code,
+                campaign_planner=self.campaign_planner,
+                lead=self.lead,
+                current_date=now,
+                starting_pops=starting_pops,
+            )
             self.logger.info(f"Consolidated waterfall report written to {out_path}")
 
             # ------------------------------------------------------------------
@@ -438,3 +429,115 @@ class WaterfallEngine:
         conn.commit()
         conn.close()
         self.logger.info(f"Waterfall run history appended to {db_path}")
+
+    # ------------------------------------------------------------------
+    # History *read* helper – fetch latest snapshot for a group
+    # ------------------------------------------------------------------
+
+    def _fetch_previous_group_metrics(self, group_name: str):
+        """Return the most recent waterfall metrics for *group_name* within
+        the configured look-back window.
+
+        Returns
+        -------
+        list[tuple[str, pandas.DataFrame]] | None
+            A list in the same structure as the *compiled* argument used by
+            the Excel writer: ``[(section_name, df), ...]``.  ``None`` if no
+            history rows are available.
+        """
+        # Ensure history DB path exists
+        db_path = self._get_history_db_path()
+        if not os.path.isfile(db_path):
+            return None
+
+        import sqlite3
+        import pandas as pd
+        from datetime import datetime as _dt, timedelta as _td
+
+        # ------------------------------------------------------------------
+        # Determine selection strategy: legacy *lookback_days* vs the new
+        # *days_ago_to_compare* parameter.  When the latter is provided we
+        # ignore look-back logic and instead fetch **all** rows for the group
+        # (we will pick the snapshot closest to the target point-in-time in
+        # Python).  This avoids overly complex SQL and keeps the behaviour
+        # deterministic even if the window is wider than the history range.
+        # ------------------------------------------------------------------
+
+        days_ago = self.cfg.history.days_ago_to_compare
+
+        conn = sqlite3.connect(db_path)
+        try:
+            if days_ago is not None:
+                # Fetch *all* rows for this group – volume is expected to be
+                # small (one row per check per historic run).
+                query = (
+                    "SELECT * FROM waterfall_history "
+                    "WHERE group_name = ?"
+                )
+                df_raw = pd.read_sql(query, conn, params=(group_name,))
+            else:
+                # Legacy behaviour: windowed look-back then pick newest.
+                lookback_days = self.cfg.history.lookback_days or 30
+                query = (
+                    "SELECT * FROM waterfall_history "
+                    "WHERE group_name = ? "
+                    "AND run_datetime >= datetime('now', ?) "
+                    "ORDER BY run_datetime DESC"
+                )
+                offset = f'-{int(lookback_days)} days'
+                df_raw = pd.read_sql(query, conn, params=(group_name, offset))
+        except Exception as ex:
+            self.logger.debug(f"Unable to read prior history for group '{group_name}': {ex}")
+            return None
+        finally:
+            conn.close()
+
+        if df_raw.empty:
+            return None
+
+        # Ensure run_datetime parsed to datetime objects for comparison logic
+        df_raw['run_dt_obj'] = pd.to_datetime(df_raw['run_datetime'])
+
+        if days_ago is not None:
+            # Target date/time – midnight-ish exact time not critical because
+            # we will measure absolute delta.
+            target_dt = _dt.now() - _td(days=int(days_ago))
+
+            # Compute absolute time delta (in seconds) per row then pick the
+            # minimal delta *per run*, finally choose the run with smallest
+            # delta overall.
+            df_raw['abs_delta'] = (df_raw['run_dt_obj'] - target_dt).abs()
+
+            # Identify the run_datetime (timestamp) with the smallest delta
+            nearest_idx = df_raw['abs_delta'].idxmin()
+            nearest_dt = df_raw.loc[nearest_idx, 'run_datetime']
+
+            df_latest = df_raw[df_raw['run_datetime'] == nearest_dt].copy()
+        else:
+            # Legacy: most recent inside window
+            latest_dt = df_raw['run_datetime'].max()
+            df_latest = df_raw[df_raw['run_datetime'] == latest_dt].copy()
+
+        metric_cols = [
+            'unique_drops',
+            'regain',
+            'incremental_drops',
+            'cumulative_drops',
+            'remaining',
+        ]
+
+        # Keep only relevant columns to match the pivoted structure used by
+        # the writer.
+        cols_available = [c for c in metric_cols if c in df_latest.columns]
+        if not cols_available:
+            return None
+
+        df_wide = df_latest[['check_name', *cols_available]].copy()
+        # Add a dummy 'section' column so downstream code can reuse the same
+        # handling logic.  We flag it as 'Previous'.
+        df_wide['section'] = 'Previous'
+
+        # Reset index order similar to pivoting routine
+        df_wide = df_wide.reset_index(drop=True)
+
+        return [('Previous', df_wide)]

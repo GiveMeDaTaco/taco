@@ -7,7 +7,7 @@ logging:
   debug_file: logs/tlptaco_poc.debug.log
 
 database:
-  host: testwf2-ogei3aaf70dllgfc.env.clearscape.teradata.com
+  host: testwf3-ogei3aaf70dllgfc.env.clearscape.teradata.com
   user: demo_user
   password: BeStrong
   logmech: TD2
@@ -103,6 +103,10 @@ waterfall:
     - c.customer_id
     - [c.customer_id, a.account_id]
     - [r.region_id, s.segment_id]
+  # New history-tracking section: enable to keep a SQLite log of each run
+  history:
+    track: true               # set to false to disable history
+    # db_path: custom/path/waterfall_history.sqlite  # optional override
 
 output:
   channels:

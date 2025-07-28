@@ -143,10 +143,10 @@ def test_full_campaign_from_yaml(tmp_path, monkeypatch):
     # Patch the Excel writer to capture waterfall outputs
     import tlptaco.engines.waterfall_excel as wf_excel_mod
     wf_captured = {}
-    def fake_wf_writer(conditions_df, compiled, output_path, group_name,
-                       offer_code, campaign_planner, lead, current_date):
+    def fake_wf_writer(conditions_df, compiled_current, output_path, *, previous=None,
+                       offer_code='', campaign_planner='', lead='', current_date='', starting_pops=None):
         wf_captured.setdefault('paths', []).append(output_path)
-        wf_captured['compiled'] = compiled
+        wf_captured['compiled'] = compiled_current
     monkeypatch.setattr(wf_excel_mod, 'write_waterfall_excel', fake_wf_writer)
     wf_engine = WaterfallEngine(app_cfg.waterfall, runner, logger)
     wf_engine.run(elig_engine)

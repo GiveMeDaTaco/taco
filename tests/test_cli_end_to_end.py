@@ -75,9 +75,9 @@ def capture_writes(monkeypatch):
     import tlptaco.iostream.writer as io_writer
 
     wf_captured = {'paths': [], 'compiled': None}
-    def fake_wf_writer(conditions_df, compiled, output_path, *args, **kwargs):
+    def fake_wf_writer(conditions_df, compiled_current, output_path, *, previous=None, **kwargs):
         wf_captured['paths'].append(output_path)
-        wf_captured['compiled'] = compiled
+        wf_captured['compiled'] = compiled_current
     monkeypatch.setattr(wf_excel_mod, 'write_waterfall_excel', fake_wf_writer)
 
     out_captured = {'records': []}

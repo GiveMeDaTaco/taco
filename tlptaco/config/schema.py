@@ -148,6 +148,29 @@ class WaterfallHistoryConfig(BaseModel):
     # inside ``waterfall.output_directory``.
     db_path: Optional[str] = None
 
+    # NEW: number of days to look back when fetching a *previous* waterfall
+    #       snapshot for comparison in the Excel report.  A value of ``None``
+    #       disables the look-back feature but still allows history tracking.
+    lookback_days: Optional[int] = 30
+
+    # NEW: explicit point-in-time comparison – choose the run closest to
+    # *exactly* this many days ago (integer).  When ``None`` the engine uses
+    # the most recent run inside *lookback_days* (legacy behaviour).
+    days_ago_to_compare: Optional[int] = None
+
+    @model_validator(mode="after")
+    def _validate_lookback(cls, self):  # type: ignore[name-defined]
+        # Set a sane default when tracking is on but user omitted lookback_days
+        if self.track and self.lookback_days is None:
+            self.lookback_days = 30
+        # Ensure positive integer if supplied
+        if self.lookback_days is not None and self.lookback_days <= 0:
+            raise ValueError("lookback_days must be a positive integer")
+
+        if self.days_ago_to_compare is not None and self.days_ago_to_compare <= 0:
+            raise ValueError("days_ago_to_compare must be a positive integer if supplied")
+        return self
+
 
 class WaterfallConfig(BaseModel):
     output_directory: str
