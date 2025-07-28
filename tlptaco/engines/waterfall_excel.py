@@ -51,7 +51,7 @@ def write_waterfall_excel(
     compiled_current: List[Tuple[str, List[Tuple[str, pd.DataFrame]]]],
     output_path: str,
     *,
-    previous: Dict[str, List[Tuple[str, pd.DataFrame]]] | None = None,
+    previous: Dict[str, Dict[str, Any]] | None = None,
     offer_code: str = "",
     campaign_planner: str = "",
     lead: str = "",
@@ -94,39 +94,41 @@ def write_waterfall_excel(
     # ------------------------------------------------------------------
     # Per-group sheets ---------------------------------------------------
     # ------------------------------------------------------------------
-    for group_name, compiled in compiled_current:
-        sheet_name = group_name[:31]  # Excel sheet name limit
+    for group_name, compiled_cur in compiled_current:
+        sheet_name = group_name[:31]
         ws_grp = wb.create_sheet(title=sheet_name)
 
         _write_header(ws_grp, offer_code, campaign_planner, lead, current_date)
 
-        # Current run table ------------------------------------------------
-        next_row = 2
-        next_row = _write_group_table(
-            ws_grp,
-            start_row=next_row,
-            group_name=group_name,
-            compiled=compiled,
-            conditions=conditions,
-            start_pop=starting_pops.get(group_name),
-        )
+        prev_info = previous.get(group_name) if previous else None
 
-        # Spacer row and label
-        ws_grp.cell(row=next_row, column=1, value="Previous").font = Font(size=12, bold=True)
-        next_row += 1
+        if prev_info:
+            hist_date = prev_info.get('date', '')
+            compiled_prev = prev_info['compiled']
+            prev_start_pop = prev_info.get('start_pop')
 
-        prev_compiled = previous.get(group_name)
-        if prev_compiled:
-            _write_group_table(
+            # Comparison table side-by-side
+            _write_group_comparison_table(
                 ws_grp,
-                start_row=next_row,
+                start_row=2,
                 group_name=group_name,
-                compiled=prev_compiled,
+                compiled_current=compiled_cur,
+                compiled_historic=compiled_prev,
                 conditions=conditions,
-                start_pop=None,
+                start_pop_current=starting_pops.get(group_name),
+                start_pop_historic=prev_start_pop,
+                historic_date=hist_date,
             )
         else:
-            ws_grp.cell(row=next_row, column=1, value="No prior data available within look-back window").font = Font(size=10)
+            # Fall back to legacy single table view
+            _write_group_table(
+                ws_grp,
+                start_row=2,
+                group_name=group_name,
+                compiled=compiled_cur,
+                conditions=conditions,
+                start_pop=starting_pops.get(group_name),
+            )
 
     wb.save(output_path)
 
@@ -283,3 +285,188 @@ def _metric_remaining_offset() -> int:
         if key == "remaining":
             return idx
     return 1
+
+# ──────────────────────────────────────────────────────────────────────────────
+# New comparison writer --------------------------------------------------------
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def _build_metrics_lookup(compiled: List[Tuple[str, pd.DataFrame]]) -> Dict[str, Dict[str, Any]]:
+    """Return mapping check_name -> metric dict for one compiled list."""
+    lookup: Dict[str, Dict[str, Any]] = {}
+    for _, df in compiled:
+        for _, row in df.iterrows():
+            lookup[row["check_name"]] = row.to_dict()
+    return lookup
+
+
+def _ordered_union(list_a: Iterable[str], list_b: Iterable[str]) -> List[str]:
+    """Return *list_a* followed by any items in *list_b* not already seen, preserving order."""
+    seen = set()
+    out: List[str] = []
+    for item in list_a:
+        if item not in seen:
+            seen.add(item)
+            out.append(item)
+    for item in list_b:
+        if item not in seen:
+            seen.add(item)
+            out.append(item)
+    return out
+
+
+def _write_group_comparison_table(
+    ws,
+    *,
+    start_row: int,
+    group_name: str,
+    compiled_current: List[Tuple[str, pd.DataFrame]],
+    compiled_historic: List[Tuple[str, pd.DataFrame]],
+    conditions: pd.DataFrame,
+    start_pop_current: int | None,
+    start_pop_historic: int | None,
+    historic_date: str = "",
+) -> None:
+    """Render side-by-side comparison table for one group."""
+
+    # Column layout constants
+    base_cols = len(_BASE_TITLES)
+    block = len(_METRIC_ORDER)
+    spacer = 1
+
+    # Column indices (1-based)
+    col_hist = base_cols + 1
+    col_cur = col_hist + block + spacer
+    col_diff = col_cur + block + spacer
+    col_pct = col_diff + block + spacer
+
+    # Header rows -------------------------------------------------------
+    # Row with base titles
+    for cidx, title in enumerate(_BASE_TITLES, start=1):
+        cell = ws.cell(row=start_row, column=cidx, value=title)
+        cell.font = Font(size=12)
+        cell.alignment = Alignment(wrap_text=True, horizontal="center", vertical="center")
+
+    # Top merged headers for each block
+    ws.merge_cells(start_row=start_row, start_column=col_hist,
+                   end_row=start_row, end_column=col_hist + block - 1)
+    ws.cell(row=start_row, column=col_hist,
+            value=f"Historical {historic_date or ''}").font = Font(size=10, bold=True)
+
+    ws.merge_cells(start_row=start_row, start_column=col_cur,
+                   end_row=start_row, end_column=col_cur + block - 1)
+    ws.cell(row=start_row, column=col_cur, value="Current").font = Font(size=10, bold=True)
+
+    ws.merge_cells(start_row=start_row, start_column=col_diff,
+                   end_row=start_row, end_column=col_diff + block - 1)
+    ws.cell(row=start_row, column=col_diff, value="Δ (Curr-Hist)").font = Font(size=10, bold=True)
+
+    ws.merge_cells(start_row=start_row, start_column=col_pct,
+                   end_row=start_row, end_column=col_pct + block - 1)
+    ws.cell(row=start_row, column=col_pct, value="% Change").font = Font(size=10, bold=True)
+
+    # Row with metric names
+    hdr2 = start_row + 1
+    for idx_block, base_col in enumerate([col_hist, col_cur, col_diff, col_pct]):
+        for m_idx, (_, disp) in enumerate(_METRIC_ORDER):
+            cell = ws.cell(row=hdr2, column=base_col + m_idx, value=disp)
+            cell.font = Font(size=9)
+            cell.fill = _HEADER_FILL
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+            ws.column_dimensions[cell.column_letter].width = 14
+
+
+    # Build look-ups and ordered lists
+    lookup_cur = _build_metrics_lookup(compiled_current)
+    lookup_hist = _build_metrics_lookup(compiled_historic)
+
+    hist_list = list(lookup_hist.keys())
+    cur_list = list(lookup_cur.keys())
+
+    # ------------------------------------------------------------------
+    # Interleaved row sequence according to spec:
+    #   – walk both lists; if names equal → combined row
+    #   – else output hist-only row followed by cur-only row
+    # ------------------------------------------------------------------
+    merged_sequence: list[tuple[str, bool, bool]] = []  # (check_name, has_hist, has_cur)
+
+    i = j = 0
+    while i < len(hist_list) or j < len(cur_list):
+        h_name = hist_list[i] if i < len(hist_list) else None
+        c_name = cur_list[j] if j < len(cur_list) else None
+
+        if h_name is not None and c_name is not None and h_name == c_name:
+            merged_sequence.append((h_name, True, True))
+            i += 1
+            j += 1
+        else:
+            if h_name is not None:
+                merged_sequence.append((h_name, True, False))
+                i += 1
+            if c_name is not None:
+                merged_sequence.append((c_name, False, True))
+                j += 1
+
+    # Starting population row ------------------------------------------
+    row_ptr = hdr2 + 1
+    ws.cell(row=row_ptr, column=5, value="Starting Population").font = Font(size=10, bold=True)
+
+    # Helper to write a value block
+    def _write_block(row, col_start, values):
+        for m_idx, key in enumerate(_METRIC_ORDER):
+            ws.cell(row=row, column=col_start + m_idx, value=values.get(key[0], "")).font = Font(size=10)
+
+    # Starting pop values -> only Remaining metric column is relevant.
+    hist_vals = {"remaining": start_pop_historic} if start_pop_historic is not None else {}
+    cur_vals = {"remaining": start_pop_current} if start_pop_current is not None else {}
+
+    _write_block(row_ptr, col_hist, hist_vals)
+    _write_block(row_ptr, col_cur, cur_vals)
+
+    # diff and pct for start pop
+    if start_pop_historic is not None and start_pop_current is not None:
+        diff_val = start_pop_current - start_pop_historic
+        pct_val = diff_val / start_pop_historic if start_pop_historic else None
+        _write_block(row_ptr, col_diff, {"remaining": diff_val})
+        _write_block(row_ptr, col_pct, {"remaining": pct_val})
+
+    # Condition rows ----------------------------------------------------
+    cond_lookup = conditions.reset_index().set_index('check_name')
+
+    for chk_name, has_hist, has_cur in merged_sequence:
+        row_ptr += 1
+        # Descriptive columns – fall back to blanks if unknown in config
+        if chk_name in cond_lookup.index:
+            row_data = cond_lookup.loc[chk_name]
+            ws.cell(row=row_ptr, column=1, value=row_data['Section']).font = Font(size=10)
+            ws.cell(row=row_ptr, column=2, value=row_data['Template']).font = Font(size=10)
+            ws.cell(row=row_ptr, column=3, value=row_data['#']).font = Font(size=10)
+            ws.cell(row=row_ptr, column=4, value=row_data['sql']).font = Font(size=10)
+            ws.cell(row=row_ptr, column=5, value=row_data['description']).font = Font(size=10)
+        else:
+            ws.cell(row=row_ptr, column=3, value=chk_name).font = Font(size=10)  # at least display name
+
+        hist_metrics = lookup_hist.get(chk_name, {}) if has_hist else {}
+        cur_metrics = lookup_cur.get(chk_name, {}) if has_cur else {}
+
+        _write_block(row_ptr, col_hist, hist_metrics)
+        _write_block(row_ptr, col_cur, cur_metrics)
+
+        # Compute diff / pct per metric
+        diff_vals = {}
+        pct_vals = {}
+        for m_key, _ in _METRIC_ORDER:
+            h_val = hist_metrics.get(m_key)
+            c_val = cur_metrics.get(m_key)
+            if h_val is not None and c_val is not None:
+                try:
+                    diff = c_val - h_val
+                    diff_vals[m_key] = diff
+                    pct_vals[m_key] = diff / h_val if h_val else ''
+                except Exception:
+                    pass
+        _write_block(row_ptr, col_diff, diff_vals)
+        _write_block(row_ptr, col_pct, pct_vals)
+
+    # leave blank row after table for readability
+    return

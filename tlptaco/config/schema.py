@@ -1,7 +1,7 @@
 """
 Pydantic models for tlptaco configuration with built-in validation.
 """
-from pydantic import BaseModel, model_validator, field_validator, ConfigDict
+from pydantic import BaseModel, model_validator, field_validator, ConfigDict, Field
 from typing import List, Dict, Optional, Any, Union
 import re
 
@@ -139,7 +139,19 @@ class EligibilityConfig(BaseModel):
 
 
 class WaterfallHistoryConfig(BaseModel):
-    """Optional SQLite history tracking for each waterfall run."""
+    """Optional SQLite history tracking for each waterfall run.
+
+    Two *alternative* ways to choose the comparison run:
+
+    1. ``recent_window_days`` (alias ``lookback_days`` – legacy):
+       pick the **latest** run whose timestamp is within the last *N* days.
+    2. ``compare_offset_days`` (alias ``days_ago_to_compare``):
+       pick the run whose timestamp is **closest to exactly N days ago**.
+       When this value is supplied it takes precedence over
+       ``recent_window_days``.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
 
     # Toggle history tracking on / off (default off for backwards-compat)
     track: bool = False
@@ -148,27 +160,23 @@ class WaterfallHistoryConfig(BaseModel):
     # inside ``waterfall.output_directory``.
     db_path: Optional[str] = None
 
-    # NEW: number of days to look back when fetching a *previous* waterfall
-    #       snapshot for comparison in the Excel report.  A value of ``None``
-    #       disables the look-back feature but still allows history tracking.
-    lookback_days: Optional[int] = 30
+    # Window-style selection (legacy name: lookback_days)
+    recent_window_days: Optional[int] = Field(30, alias="lookback_days")
 
-    # NEW: explicit point-in-time comparison – choose the run closest to
-    # *exactly* this many days ago (integer).  When ``None`` the engine uses
-    # the most recent run inside *lookback_days* (legacy behaviour).
-    days_ago_to_compare: Optional[int] = None
+    # Point-in-time offset selection (legacy name: days_ago_to_compare)
+    compare_offset_days: Optional[int] = Field(None, alias="days_ago_to_compare")
 
     @model_validator(mode="after")
-    def _validate_lookback(cls, self):  # type: ignore[name-defined]
-        # Set a sane default when tracking is on but user omitted lookback_days
-        if self.track and self.lookback_days is None:
-            self.lookback_days = 30
-        # Ensure positive integer if supplied
-        if self.lookback_days is not None and self.lookback_days <= 0:
-            raise ValueError("lookback_days must be a positive integer")
+    def _validate_numbers(cls, self):  # type: ignore[name-defined]
+        if self.track and self.recent_window_days is None and self.compare_offset_days is None:
+            # Default window when nothing specified
+            self.recent_window_days = 30
 
-        if self.days_ago_to_compare is not None and self.days_ago_to_compare <= 0:
-            raise ValueError("days_ago_to_compare must be a positive integer if supplied")
+        if self.recent_window_days is not None and self.recent_window_days <= 0:
+            raise ValueError("recent_window_days must be a positive integer")
+
+        if self.compare_offset_days is not None and self.compare_offset_days <= 0:
+            raise ValueError("compare_offset_days must be a positive integer if supplied")
         return self
 
 

@@ -287,9 +287,14 @@ class WaterfallEngine:
                     # Attempt to fetch a *previous* snapshot for this
                     # group from the history DB (if available).
                     # --------------------------------------------------
-                    prev_compiled = self._fetch_previous_group_metrics(group['name'])
-                    if prev_compiled:
-                        previous_groups[group['name']] = prev_compiled
+                    prev_result = self._fetch_previous_group_metrics(group['name'])
+                    if prev_result:
+                        prev_date, prev_compiled, prev_start_pop = prev_result
+                        previous_groups[group['name']] = {
+                            'date': prev_date,
+                            'compiled': prev_compiled,
+                            'start_pop': prev_start_pop,
+                        }
 
             except Exception as e:
                 self.logger.exception(f"Waterfall grouping '{group['name']}' failed: {e}")
@@ -302,13 +307,16 @@ class WaterfallEngine:
         # ------------------------------------------------------------------
         if compiled_groups:
             import tlptaco.engines.waterfall_excel as wf_excel_mod
-            now = datetime.now().strftime("%Y-%m-%d %H_%M_%S")
+            # Timestamped filename using offer_code_YYYY_MM_DD_HH:MM:SS.xlsx
+            timestamp_str = datetime.now().strftime("%Y_%m_%d_%H:%M:%S")
 
-            # Determine output path for workbook
-            out_path = os.path.join(
-                self.cfg.output_directory,
-                f"waterfall_report_{engine_to_use.cfg.eligibility_table}_all_groups.xlsx",
-            )
+            # Sanitize offer code for filesystem safety (letters, numbers, _ -)
+            import re
+            safe_offer = re.sub(r'[^A-Za-z0-9_-]+', '_', self.offer_code or 'run')
+
+            file_name = f"{safe_offer}_{timestamp_str}.xlsx"
+
+            out_path = os.path.join(self.cfg.output_directory, file_name)
 
             wf_excel_mod.write_waterfall_excel(
                 conditions_df,
@@ -318,7 +326,7 @@ class WaterfallEngine:
                 offer_code=self.offer_code,
                 campaign_planner=self.campaign_planner,
                 lead=self.lead,
-                current_date=now,
+                current_date=timestamp_str.replace('_', '-') ,
                 starting_pops=starting_pops,
             )
             self.logger.info(f"Consolidated waterfall report written to {out_path}")
@@ -463,9 +471,10 @@ class WaterfallEngine:
         # deterministic even if the window is wider than the history range.
         # ------------------------------------------------------------------
 
-        days_ago = self.cfg.history.days_ago_to_compare
+        days_ago = self.cfg.history.compare_offset_days
 
         conn = sqlite3.connect(db_path)
+        prev_start_pop: int | None = None
         try:
             if days_ago is not None:
                 # Fetch *all* rows for this group – volume is expected to be
@@ -477,7 +486,7 @@ class WaterfallEngine:
                 df_raw = pd.read_sql(query, conn, params=(group_name,))
             else:
                 # Legacy behaviour: windowed look-back then pick newest.
-                lookback_days = self.cfg.history.lookback_days or 30
+                lookback_days = self.cfg.history.recent_window_days or 30
                 query = (
                     "SELECT * FROM waterfall_history "
                     "WHERE group_name = ? "
@@ -513,10 +522,23 @@ class WaterfallEngine:
             nearest_dt = df_raw.loc[nearest_idx, 'run_datetime']
 
             df_latest = df_raw[df_raw['run_datetime'] == nearest_dt].copy()
+            # Determine starting population for this historic run
+            if 'stat_name' in df_raw.columns:
+                sp_series = df_raw[(df_raw['run_datetime'] == nearest_dt) &
+                                   (df_raw['check_name'] == 'Total') &
+                                   (df_raw['stat_name'] == 'initial_population')]['cntr']
+                if not sp_series.empty:
+                    prev_start_pop = int(sp_series.iloc[0])
         else:
             # Legacy: most recent inside window
             latest_dt = df_raw['run_datetime'].max()
             df_latest = df_raw[df_raw['run_datetime'] == latest_dt].copy()
+            if 'stat_name' in df_raw.columns:
+                sp_series = df_raw[(df_raw['run_datetime'] == latest_dt) &
+                                   (df_raw['check_name'] == 'Total') &
+                                   (df_raw['stat_name'] == 'initial_population')]['cntr']
+                if not sp_series.empty:
+                    prev_start_pop = int(sp_series.iloc[0])
 
         metric_cols = [
             'unique_drops',
@@ -535,9 +557,11 @@ class WaterfallEngine:
         df_wide = df_latest[['check_name', *cols_available]].copy()
         # Add a dummy 'section' column so downstream code can reuse the same
         # handling logic.  We flag it as 'Previous'.
-        df_wide['section'] = 'Previous'
+        df_wide['section'] = 'Historical'
 
         # Reset index order similar to pivoting routine
         df_wide = df_wide.reset_index(drop=True)
 
-        return [('Previous', df_wide)]
+        return (nearest_dt if days_ago is not None else latest_dt,
+                [('Historical', df_wide)],
+                prev_start_pop)

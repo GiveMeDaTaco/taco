@@ -1,5 +1,6 @@
 campaign_planner: Michael
 lead: Andrew
+offer_code: XX001
 
 logging:
   level: INFO

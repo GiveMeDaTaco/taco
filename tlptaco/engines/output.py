@@ -99,16 +99,28 @@ class OutputEngine:
 
             # Determine file extension: use .xlsx for 'excel'
             fmt = out_cfg.output_options.format.lower()
-            ext = 'xlsx' if fmt == 'excel' else fmt
-            path = os.path.join(out_cfg.file_location,
-                                f"{out_cfg.file_base_name}.{ext}")
 
-            self._output_jobs.append({
-                'channel_name': channel_name,
-                'sql': sql,
-                'path': path,
-                'output_options': out_cfg.output_options
-            })
+            if fmt == 'table':
+                # file_location = schema, file_base_name = table
+                full_table = f"{out_cfg.file_location}.{out_cfg.file_base_name}"
+                self._output_jobs.append({
+                    'channel_name': channel_name,
+                    'sql': sql,
+                    'fmt': 'table',
+                    'table_name': full_table,
+                    'unique_on': out_cfg.unique_on,
+                })
+            else:
+                ext = 'xlsx' if fmt == 'excel' else fmt
+                path = os.path.join(out_cfg.file_location,
+                                    f"{out_cfg.file_base_name}.{ext}")
+                self._output_jobs.append({
+                    'channel_name': channel_name,
+                    'sql': sql,
+                    'fmt': fmt,
+                    'path': path,
+                    'output_options': out_cfg.output_options
+                })
 
     def num_steps(self, eligibility_engine) -> int:
         """
@@ -138,26 +150,42 @@ class OutputEngine:
             self.logger.info(f"Running output job for channel {channel_name}")
             self.logger.debug(job['sql'])
 
-            df = self.runner.to_df(job['sql'])
-            self.logger.info(f"Fetched {len(df)} rows for channel {channel_name}")
+            if job['fmt'] == 'table':
+                table_full = job['table_name']
+                try:
+                    self.logger.info(f"Dropping existing table {table_full} (if any)")
+                    self.runner.run(f"DROP TABLE {table_full};")
+                except Exception:
+                    self.logger.debug("No pre-existing table to drop or driver raised warning")
 
-            cf = job['output_options'].custom_function
-            if cf:
-                module_name, fn_name = cf.rsplit('.', 1)
-                mod = importlib.import_module(module_name)
-                func = getattr(mod, fn_name)
-                self.logger.info(f"Applying custom function {fn_name} to channel {channel_name}")
-                df = func(df)
+                create_sql = (
+                    f"CREATE MULTISET TABLE {table_full} AS (\n" +
+                    job['sql'].rstrip().rstrip(';') +
+                    "\n) WITH DATA;"
+                )
+                self.logger.info(f"Creating output table {table_full}")
+                self.runner.run(create_sql)
+            else:
+                df = self.runner.to_df(job['sql'])
+                self.logger.info(f"Fetched {len(df)} rows for channel {channel_name}")
 
-            os.makedirs(os.path.dirname(job['path']), exist_ok=True)
-            self.logger.info(f"Writing output file for channel {channel_name} to {job['path']}")
-            # Delegate to io_writer.write_dataframe so tests can monkey-patch
-            io_writer.write_dataframe(
-                df,
-                job['path'],
-                job['output_options'].format,
-                **(job['output_options'].additional_arguments or {})
-            )
+                cf = job['output_options'].custom_function if 'output_options' in job else None
+                if cf:
+                    module_name, fn_name = cf.rsplit('.', 1)
+                    mod = importlib.import_module(module_name)
+                    func = getattr(mod, fn_name)
+                    self.logger.info(f"Applying custom function {fn_name} to channel {channel_name}")
+                    df = func(df)
+
+                os.makedirs(os.path.dirname(job['path']), exist_ok=True)
+                self.logger.info(f"Writing output file for channel {channel_name} to {job['path']}")
+                # Delegate to io_writer.write_dataframe so tests can monkey-patch
+                io_writer.write_dataframe(
+                    df,
+                    job['path'],
+                    job['output_options'].format,
+                    **(job['output_options'].additional_arguments or {})
+                )
 
             if progress:
                 progress.update("Output")
