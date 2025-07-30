@@ -38,7 +38,12 @@ _METRIC_ORDER: List[Tuple[str, str]] = [
     ("remaining", "Remaining"),
 ]
 
-_HEADER_FILL = PatternFill(start_color="87CEEB", end_color="87CEEB", fill_type="solid")
+_HEADER_FILL = PatternFill(start_color="E0E0E0", end_color="E0E0E0", fill_type="solid")
+
+# Additional palette colours
+_BLOCK_HEADER_FILL = PatternFill(start_color="6495ED", end_color="6495ED", fill_type="solid")  # Cornflower Blue
+_HIST_ONLY_FILL   = PatternFill(start_color="FFF9C4", end_color="FFF9C4", fill_type="solid")  # Light Yellow
+_CUR_ONLY_FILL    = PatternFill(start_color="C8E6C9", end_color="C8E6C9", fill_type="solid")  # Light Mint
 
 
 # ────────────────────────────────────────────────────────────────────────────────
@@ -276,6 +281,18 @@ def _write_group_table(
             val = metrics_lookup.get(cond_row["check_name"], {}).get(mkey, "")
             ws.cell(row=row_ptr, column=len(_BASE_TITLES) + 1 + m_idx, value=val).font = Font(size=10)
 
+        # Apply row fill based on presence only after writing cells across row
+        if has_hist and not has_cur:
+            row_fill = _HIST_ONLY_FILL
+        elif has_cur and not has_hist:
+            row_fill = _CUR_ONLY_FILL
+        else:
+            row_fill = None
+
+        if row_fill is not None:
+            for col in range(1, col_pct + block):
+                ws.cell(row=row_ptr, column=col).fill = row_fill
+
     return row_ptr + 2  # leave a blank row after table
 
 
@@ -348,26 +365,22 @@ def _write_group_comparison_table(
         cell.alignment = Alignment(wrap_text=True, horizontal="center", vertical="center")
 
     # Top merged headers for each block
-    ws.merge_cells(start_row=start_row, start_column=col_hist,
-                   end_row=start_row, end_column=col_hist + block - 1)
-    ws.cell(row=start_row, column=col_hist,
-            value=f"Historical {historic_date or ''}").font = Font(size=10, bold=True)
+    def _mk_block(col_start, title):
+        ws.merge_cells(start_row=start_row, start_column=col_start,
+                       end_row=start_row, end_column=col_start + block - 1)
+        cell = ws.cell(row=start_row, column=col_start, value=title)
+        cell.font = Font(size=10, bold=True, color="FFFFFF")
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+        cell.fill = _BLOCK_HEADER_FILL
 
-    ws.merge_cells(start_row=start_row, start_column=col_cur,
-                   end_row=start_row, end_column=col_cur + block - 1)
-    ws.cell(row=start_row, column=col_cur, value="Current").font = Font(size=10, bold=True)
-
-    ws.merge_cells(start_row=start_row, start_column=col_diff,
-                   end_row=start_row, end_column=col_diff + block - 1)
-    ws.cell(row=start_row, column=col_diff, value="Δ (Curr-Hist)").font = Font(size=10, bold=True)
-
-    ws.merge_cells(start_row=start_row, start_column=col_pct,
-                   end_row=start_row, end_column=col_pct + block - 1)
-    ws.cell(row=start_row, column=col_pct, value="% Change").font = Font(size=10, bold=True)
+    _mk_block(col_hist, f"Historical {historic_date or ''}")
+    _mk_block(col_cur, "Current")
+    _mk_block(col_diff, "Δ (Curr-Hist)")
+    _mk_block(col_pct, "% Change")
 
     # Row with metric names
     hdr2 = start_row + 1
-    for idx_block, base_col in enumerate([col_hist, col_cur, col_diff, col_pct]):
+    for base_col in [col_hist, col_cur, col_diff, col_pct]:
         for m_idx, (_, disp) in enumerate(_METRIC_ORDER):
             cell = ws.cell(row=hdr2, column=base_col + m_idx, value=disp)
             cell.font = Font(size=9)
@@ -468,5 +481,23 @@ def _write_group_comparison_table(
         _write_block(row_ptr, col_diff, diff_vals)
         _write_block(row_ptr, col_pct, pct_vals)
 
-    # leave blank row after table for readability
+    # Borders around full data rectangle
+    from openpyxl.styles import Border, Side
+    thin = Side(style="thin", color="000000")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    last_col = col_pct + block - 1
+    for col in range(1, last_col + 1):
+        # top
+        ws.cell(row=start_row, column=col).border = border
+        # bottom
+        ws.cell(row=row_ptr, column=col).border = border
+    for row in range(start_row, row_ptr + 1):
+        ws.cell(row=row, column=1).border = border
+        ws.cell(row=row, column=last_col).border = border
+
+    # Freeze panes below the two header rows (i.e., first data row)
+    ws.freeze_panes = ws.cell(row=hdr2 + 1, column=1)
+
+    # leave blank row after table
     return
