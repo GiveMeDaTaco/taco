@@ -18,6 +18,7 @@ from tlptaco.engines.eligibility import EligibilityEngine
 from tlptaco.engines.waterfall import WaterfallEngine
 from tlptaco.engines.output import OutputEngine
 from tlptaco.utils.logging import configure_logging
+from typing import List, Tuple
 
 
 def main():
@@ -77,6 +78,29 @@ def main():
     except Exception:
         pass
 
+    # ------------------------------------------------------------------
+    # Execute pre-run SQL files (if any) BEFORE running engines
+    # ------------------------------------------------------------------
+
+    def _split_sql(text: str) -> List[str]:
+        """Split raw SQL text on semicolons into individual statements.
+        A very naive split that works for well-formed scripts without
+        procedural blocks containing semicolons."""
+        stmts = [s.strip() for s in text.split(';')]
+        return [s for s in stmts if s]
+
+    pre_sql_files: List[str] = config.pre_sql or []
+    sql_statements: List[Tuple[str, str]] = []  # list of (file, stmt)
+    for path in pre_sql_files:
+        try:
+            with open(path, 'r') as f:
+                content = f.read()
+            for stmt in _split_sql(content):
+                sql_statements.append((path, stmt))
+        except Exception as e:
+            logger.error(f"Failed reading pre_sql file {path}: {e}")
+            raise
+
     # Instantiate engines
     eligibility_engine = EligibilityEngine(config.eligibility, runner, logger)
     waterfall_engine = WaterfallEngine(config.waterfall, runner, logger)
@@ -93,18 +117,37 @@ def main():
         # Determine steps for each stage
         elig_steps = eligibility_engine.num_steps()
         wf_steps = waterfall_engine.num_steps(eligibility_engine)
-        layers = [("Eligibility", elig_steps), ("Waterfall", wf_steps)]
+        layers = []
+        if sql_statements:
+            layers.append(("SQL Statements", len(sql_statements)))
+        layers.extend([("Eligibility", elig_steps), ("Waterfall", wf_steps)])
         if args.mode == "full":
             out_steps = output_engine.num_steps(eligibility_engine)
             layers.append(("Output", out_steps))
         # Run with progress bars
         with ProgressManager(layers, units="steps", title=config.offer_code) as pm:
+            # 1. run any pre_sql statements
+            if sql_statements:
+                for _file, stmt in sql_statements:
+                    logger.info(f"Executing pre-SQL from {_file}")
+                    try:
+                        runner.run(stmt)
+                    finally:
+                        pm.update("SQL Statements")
+
+            # 2. run pipeline engines
             eligibility_engine.run(progress=pm)
             waterfall_engine.run(progress=pm)
             if args.mode == "full":
                 output_engine.run(progress=pm)
     else:
         # Run without progress bars
+        # Execute pre-sql first
+        for _file, stmt in sql_statements:
+            logger.info(f"Executing pre-SQL from {_file}")
+            runner.run(stmt)
+
+        # main pipeline
         eligibility_engine.run()
         waterfall_engine.run(eligibility_engine)
         if args.mode == "full":

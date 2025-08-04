@@ -8,6 +8,7 @@ import tlptaco.iostream.writer as io_writer
 from tlptaco.sql.generator import SQLGenerator
 import os
 import importlib
+from typing import Any
 
 
 class OutputEngine:
@@ -57,15 +58,11 @@ class OutputEngine:
             # Condition for main BA checks
             main_ba_condition = create_sql_condition(elig_cfg.conditions.main.BA)
 
-            # Case 1: Channel BA
+            # Channel BA checks string (re-used by all non-BA templates)
             channel_ba_checks = channel_elig_cfg.BA
             channel_ba_condition = create_sql_condition(channel_ba_checks)
-            cases.append({
-                'template': f'{channel_name}_BA',
-                'condition': f"({main_ba_condition}) AND ({channel_ba_condition})"
-            })
 
-            # Case 2: Other segments (sorted by priority as defined in YAML)
+            # Non-BA templates (sorted by YAML order)
             if channel_elig_cfg.others:
                 for segment_name, segment_checks in channel_elig_cfg.others.items():
                     segment_condition = create_sql_condition(segment_checks)
@@ -110,6 +107,7 @@ class OutputEngine:
                     'table_name': full_table,
                     'unique_on': out_cfg.unique_on,
                 })
+
             else:
                 ext = 'xlsx' if fmt == 'excel' else fmt
                 path = os.path.join(out_cfg.file_location,
@@ -121,6 +119,9 @@ class OutputEngine:
                     'path': path,
                     'output_options': out_cfg.output_options
                 })
+
+        # After processing all channels, append failed-records job if configured
+        self._add_failed_records_job(eligibility_engine, gen)
 
     def num_steps(self, eligibility_engine) -> int:
         """
@@ -189,3 +190,117 @@ class OutputEngine:
 
             if progress:
                 progress.update("Output")
+
+
+    # ------------------------------------------------------------------
+    # Failed Records helper
+    # ------------------------------------------------------------------
+
+    def _add_failed_records_job(self, eligibility_engine, gen):
+        """Internal helper to build the failed_records job when enabled."""
+        if not self.cfg.failed_records or not self.cfg.failed_records.enabled:
+            return
+
+        elig_cfg = eligibility_engine.cfg
+
+        # --- gather identifier columns ---------------------------------------------------
+        id_cols: list[str] = []
+        for chan_cfg in self.cfg.channels.values():
+            if chan_cfg.unique_on:
+                for col in chan_cfg.unique_on:
+                    if col not in id_cols:
+                        id_cols.append(col)
+        if not id_cols:
+            # fallback to eligibility unique identifiers
+            id_cols = elig_cfg.unique_identifiers
+
+        # --- gather *all* flag checks ----------------------------------------------------
+        all_checks = []
+        all_checks.extend(elig_cfg.conditions.main.BA)
+        for seg_chk in elig_cfg.conditions.main.segments.values():
+            all_checks.extend(seg_chk)
+        for ch_cfg in elig_cfg.conditions.channels.values():
+            all_checks.extend(ch_cfg.BA)
+            for seg_checks in ch_cfg.segments.values():
+                all_checks.extend(seg_checks)
+
+        # Preserve order & assign rank
+        unique_checks: dict[str, Any] = {}
+        for chk in all_checks:
+            unique_checks.setdefault(chk.name, chk)
+
+        failed_flag_checks = []
+        rank_counter = 1
+        for chk_name, chk in unique_checks.items():
+            failed_flag_checks.append({'name': chk.name, 'sql': chk.sql, 'rank': rank_counter})
+            rank_counter += 1
+
+        # --- build unbucketed channels ---------------------------------------------------
+        def _cond(check_list):
+            if not check_list:
+                return '1=1'
+            return ' AND '.join([f"c.{ck.name} = 1" for ck in check_list])
+
+        main_ba_cond = _cond(elig_cfg.conditions.main.BA)
+
+        unbucketed_channels = []
+
+        for ch_name, ch_cfg in elig_cfg.conditions.channels.items():
+            channel_ba_cond = _cond(ch_cfg.BA)
+            pre_filter = f"({main_ba_cond}) AND ({channel_ba_cond})" if channel_ba_cond != '1=1' else main_ba_cond
+
+            # collect segment conditions
+            seg_conditions = []
+            for seg_checks in ch_cfg.others.values():
+                seg_conditions.append(' AND '.join([f"c.{ck.name} = 1" for ck in seg_checks]))
+
+            if seg_conditions:
+                bucket_or = ' OR '.join([f"({sc})" for sc in seg_conditions])
+                no_template_cond = f"NOT ({bucket_or})"
+            else:
+                # No segments defined – everything that passes BA but hasn't been bucketed is effectively all rows
+                no_template_cond = '1=1'
+
+            unbucketed_channels.append({
+                'channel': ch_name,
+                'pre_filter': pre_filter,
+                'no_template_condition': no_template_cond,
+                'rank': rank_counter
+            })
+            rank_counter += 1
+
+        # --- Render SQL ------------------------------------------------------------------
+        context = {
+            'eligibility_table': elig_cfg.eligibility_table,
+            'unique_identifiers': id_cols,
+            'failed_flag_checks': failed_flag_checks,
+            'unbucketed_channels': unbucketed_channels,
+            'first_reason_only': self.cfg.failed_records.first_reason_only,
+        }
+
+        sql_failed = gen.render('failed_records.sql.j2', context)
+
+        from tlptaco.utils.logging import log_sql_section
+        log_sql_section('Failed Records', sql_failed)
+
+        # Determine output path or table
+        fmt = self.cfg.failed_records.output_options.format.lower()
+        job = {
+            'channel_name': 'failed_records',
+            'sql': sql_failed,
+            'fmt': fmt,
+            'output_options': self.cfg.failed_records.output_options,
+        }
+
+        if fmt == 'table':
+            full_table = f"{self.cfg.failed_records.file_location}.{self.cfg.failed_records.file_base_name}"
+            job['table_name'] = full_table
+        else:
+            ext = 'xlsx' if fmt == 'excel' else fmt
+            path = os.path.join(
+                self.cfg.failed_records.file_location,
+                f"{self.cfg.failed_records.file_base_name}.{ext}"
+            )
+            job['path'] = path
+
+        self._output_jobs.append(job)

@@ -232,45 +232,66 @@ def _write_group_table(
     Returns the next free row index after the table.
     """
 
-    # Title rows ---------------------------------------------------------
-    # Row with base titles
+    # ------------------------------------------------------------------
+    # Header rows – mimic comparison layout but with a single *Current* block
+    # ------------------------------------------------------------------
+
+    base_cols = len(_BASE_TITLES)
+    block = len(_METRIC_ORDER)
+    col_cur = base_cols + 1  # start column for the metric block (1-based)
+
+    # Row 1 (relative to start_row): base descriptive titles
     for cidx, title in enumerate(_BASE_TITLES, start=1):
         cell = ws.cell(row=start_row, column=cidx, value=title)
         cell.font = Font(size=12)
         cell.alignment = Alignment(wrap_text=True, horizontal="center", vertical="center")
 
-    # Group title merge
-    ws.merge_cells(start_row=start_row, start_column=len(_BASE_TITLES) + 1,
-                   end_row=start_row, end_column=len(_BASE_TITLES) + len(_METRIC_ORDER))
-    gcell = ws.cell(row=start_row, column=len(_BASE_TITLES) + 1, value=group_name)
-    gcell.font = Font(size=10, bold=True)
-    gcell.alignment = Alignment(horizontal="center", vertical="center")
+    # Helper to create a coloured merged-cell header block
+    def _mk_block(col_start: int, title: str):
+        ws.merge_cells(start_row=start_row,
+                       start_column=col_start,
+                       end_row=start_row,
+                       end_column=col_start + block - 1)
+        cell = ws.cell(row=start_row, column=col_start, value=title)
+        cell.font = Font(size=10, bold=True, color="FFFFFF")
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+        cell.fill = _BLOCK_HEADER_FILL
 
-    # Row with metric headers
+    # Single blue header for CURRENT metrics
+    _mk_block(col_cur, "Current")
+
+    # Row 2: metric display names
     row_hdr2 = start_row + 1
     for m_idx, (_, disp) in enumerate(_METRIC_ORDER):
-        cell = ws.cell(row=row_hdr2, column=len(_BASE_TITLES) + 1 + m_idx, value=disp)
+        cell = ws.cell(row=row_hdr2, column=col_cur + m_idx, value=disp)
         cell.font = Font(size=9)
         cell.fill = _HEADER_FILL
         cell.alignment = Alignment(horizontal="center", vertical="center")
         ws.column_dimensions[cell.column_letter].width = 14
 
-    # Build lookup for metrics
+    # ------------------------------------------------------------------
+    # Build lookup for metric values (current run only)
+    # ------------------------------------------------------------------
     metrics_lookup: Dict[str, Dict[str, Any]] = {}
     for _, df in compiled:
         for _, row in df.iterrows():
             metrics_lookup[row["check_name"]] = row.to_dict()
 
+    # ------------------------------------------------------------------
     # Starting population row
+    # ------------------------------------------------------------------
     row_ptr = row_hdr2 + 1
     ws.cell(row=row_ptr, column=5, value="Starting Population").font = Font(size=10, bold=True)
     if start_pop is not None:
         pop_col = len(_BASE_TITLES) + _metric_remaining_offset()
         ws.cell(row=row_ptr, column=pop_col, value=start_pop).font = Font(size=10)
 
-    # Condition rows
+    # ------------------------------------------------------------------
+    # Condition rows – one per check
+    # ------------------------------------------------------------------
     for _, cond_row in conditions.reset_index().iterrows():
         row_ptr += 1
+
         ws.cell(row=row_ptr, column=1, value=cond_row["Section"]).font = Font(size=10)
         ws.cell(row=row_ptr, column=2, value=cond_row["Template"]).font = Font(size=10)
         ws.cell(row=row_ptr, column=3, value=cond_row["#"]).font = Font(size=10)
@@ -279,21 +300,10 @@ def _write_group_table(
 
         for m_idx, (mkey, _) in enumerate(_METRIC_ORDER):
             val = metrics_lookup.get(cond_row["check_name"], {}).get(mkey, "")
-            ws.cell(row=row_ptr, column=len(_BASE_TITLES) + 1 + m_idx, value=val).font = Font(size=10)
+            ws.cell(row=row_ptr, column=col_cur + m_idx, value=val).font = Font(size=10)
 
-        # Apply row fill based on presence only after writing cells across row
-        if has_hist and not has_cur:
-            row_fill = _HIST_ONLY_FILL
-        elif has_cur and not has_hist:
-            row_fill = _CUR_ONLY_FILL
-        else:
-            row_fill = None
-
-        if row_fill is not None:
-            for col in range(1, col_pct + block):
-                ws.cell(row=row_ptr, column=col).fill = row_fill
-
-    return row_ptr + 2  # leave a blank row after table
+    # Leave a blank line after the table before returning next free row index
+    return row_ptr + 2
 
 
 def _metric_remaining_offset() -> int:

@@ -210,8 +210,27 @@ class OutputChannelConfig(BaseModel):
                     )
         return self
 
+# -----------------------------------------------------------------------------
+# Failed Records dump configuration
+# -----------------------------------------------------------------------------
+
+
+class FailedRecordsConfig(BaseModel):
+    """Configuration for optional failed-records export."""
+
+    enabled: bool = False
+    # When true, only *one* failure reason per unique identifier is kept –
+    # the first encountered by reason rank.
+    first_reason_only: bool = False
+    file_location: str
+    file_base_name: str
+    output_options: OutputOptions
+
+
 class OutputConfig(BaseModel):
     channels: Dict[str, OutputChannelConfig]
+    # Optional failed-records dump configuration
+    failed_records: Optional[FailedRecordsConfig] = None
 
 class LoggingConfig(BaseModel):
     level: str
@@ -242,6 +261,18 @@ class AppConfig(BaseModel):
     eligibility: EligibilityConfig
     waterfall: WaterfallConfig
     output: OutputConfig
+    # Optional list of .sql files to run in order *before* eligibility logic
+    pre_sql: Optional[List[str]] = None
+
+    @field_validator('pre_sql', mode='after')
+    def _validate_pre_sql_paths(cls, v):  # type: ignore[name-defined]
+        if not v:
+            return v
+        import os
+        missing = [p for p in v if not os.path.isfile(p)]
+        if missing:
+            raise ValueError(f"pre_sql files not found: {missing}")
+        return v
 
     @model_validator(mode='after')
     def check_cross_config_dependencies(self) -> 'AppConfig':
