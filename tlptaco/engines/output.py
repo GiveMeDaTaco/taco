@@ -12,6 +12,27 @@ from typing import Any
 
 
 class OutputEngine:
+    """Materialise final *output* datasets / tables.
+
+    For each channel in ``output.channels`` the engine renders a SQL SELECT
+    against the smart table (optionally runs a user-specified function on
+    the resulting DataFrame) and finally persists to:
+
+    * a DB table (`format == 'table'`) **or**
+    * a file (CSV / Parquet / Excel) with an *automatic* ``_YYYYMMDD``
+      suffix as of the current date.
+
+    Example
+    -------
+    >>> out_engine = OutputEngine(app_cfg.output, runner)
+    >>> out_engine.run(elig_engine)
+
+    Notes
+    -----
+    Database I/O is delegated to :class:`tlptaco.db.runner.DBRunner`; in your
+    unit tests you can monkey-patch its ``to_df`` method to return dummy
+    DataFrames and avoid any real DB dependency.
+    """
     def __init__(self, cfg: OutputConfig, runner: DBRunner, logger=None):
         self.cfg = cfg
         self.runner = runner
@@ -19,6 +40,18 @@ class OutputEngine:
         # Cache for prepared jobs and the eligibility engine
         self._output_jobs = None
         self._eligibility_engine = None
+
+    # ------------------------------------------------------------------
+    # Internal helper – append current date YYYYMMDD to a base filename
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _append_today(base: str) -> str:
+        from datetime import datetime
+        today_str = datetime.now().strftime('%Y%m%d')
+        if base.endswith(today_str):
+            return base
+        return f"{base}_{today_str}"
 
     def _prepare_output_steps(self, eligibility_engine):
         """
@@ -38,6 +71,8 @@ class OutputEngine:
         gen = SQLGenerator(templates_dir)
 
         # --- START MODIFICATION ---
+        _date_suffix = self._append_today  # local alias
+
         def create_sql_condition(check_list):
             """Helper function to create a combined SQL AND condition."""
             if not check_list:
@@ -74,8 +109,9 @@ class OutputEngine:
                         f"({segment_condition})",
                         *exclusion_conditions
                     ]
+                    # Use *segment name only* for template_id as requested
                     cases.append({
-                        'template': f'{channel_name}_{segment_name}',
+                        'template': f'{segment_name}',
                         'condition': " AND ".join(current_conditions)
                     })
 
@@ -111,7 +147,7 @@ class OutputEngine:
             else:
                 ext = 'xlsx' if fmt == 'excel' else fmt
                 path = os.path.join(out_cfg.file_location,
-                                    f"{out_cfg.file_base_name}.{ext}")
+                                    f"{_date_suffix(out_cfg.file_base_name)}.{ext}")
                 self._output_jobs.append({
                     'channel_name': channel_name,
                     'sql': sql,
@@ -146,6 +182,7 @@ class OutputEngine:
 
         self._prepare_output_steps(engine_to_use)
 
+        total_rows_written = 0
         for job in self._output_jobs:
             channel_name = job['channel_name']
             self.logger.info(f"Running output job for channel {channel_name}")
@@ -178,7 +215,16 @@ class OutputEngine:
                     self.logger.info(f"Applying custom function {fn_name} to channel {channel_name}")
                     df = func(df)
 
-                os.makedirs(os.path.dirname(job['path']), exist_ok=True)
+                # Force *all* data to string type to preserve formatting (no numeric coercion)
+                df = df.astype(str)
+
+                # accumulate rows for aggregate logging
+                total_rows_written += len(df)
+
+                out_dir = os.path.dirname(job['path'])
+                os.makedirs(out_dir, exist_ok=True)
+                from tlptaco.utils.fs import grant_group_rwx
+                grant_group_rwx(out_dir)
                 self.logger.info(f"Writing output file for channel {channel_name} to {job['path']}")
                 # Delegate to io_writer.write_dataframe so tests can monkey-patch
                 io_writer.write_dataframe(
@@ -190,6 +236,15 @@ class OutputEngine:
 
             if progress:
                 progress.update("Output")
+
+        # Aggregate summary
+        try:
+            num_channels = len(self._output_jobs)
+            self.logger.info(
+                f"Output stage finished: {num_channels} channels, {total_rows_written:,} total rows written"
+            )
+        except Exception:
+            pass
 
 
     # ------------------------------------------------------------------
@@ -299,7 +354,7 @@ class OutputEngine:
             ext = 'xlsx' if fmt == 'excel' else fmt
             path = os.path.join(
                 self.cfg.failed_records.file_location,
-                f"{self.cfg.failed_records.file_base_name}.{ext}"
+                f"{self._append_today(self.cfg.failed_records.file_base_name)}.{ext}"
             )
             job['path'] = path
 

@@ -18,7 +18,8 @@ from tlptaco.engines.eligibility import EligibilityEngine
 from tlptaco.engines.waterfall import WaterfallEngine
 from tlptaco.engines.output import OutputEngine
 from tlptaco.utils.logging import configure_logging
-from typing import List, Tuple
+from typing import List
+import time
 
 
 def main():
@@ -40,7 +41,10 @@ def main():
 
     # Determine working directory for outputs/logs
     workdir = os.path.abspath(args.output_dir) if args.output_dir else os.getcwd()
-    os.makedirs(os.path.join(workdir, 'logs'), exist_ok=True)
+    logs_dir_root = os.path.join(workdir, 'logs')
+    os.makedirs(logs_dir_root, exist_ok=True)
+    from tlptaco.utils.fs import grant_group_rwx
+    grant_group_rwx(logs_dir_root)
     # Load configuration
     config = load_config(args.config)
     # ------------------------------------------------------------------
@@ -50,14 +54,13 @@ def main():
     safe_offer = re.sub(r'[^A-Za-z0-9_-]+', '_', config.offer_code or 'run')
     logs_dir = os.path.join(workdir, 'logs')
 
-    # Override logging paths to use workdir if not explicitly set
-    if not config.logging.file:
-        config.logging.file = os.path.join(logs_dir, f'tlptaco_{safe_offer}.log')
-    if not config.logging.debug_file:
-        config.logging.debug_file = os.path.join(logs_dir, f'tlptaco_{safe_offer}.debug.log')
-    # Default SQL log file path
-    if not getattr(config.logging, 'sql_file', None):
-        config.logging.sql_file = os.path.join(logs_dir, f'tlptaco_{safe_offer}.sql.log')
+    # If user supplied file paths, make them absolute (relative to workdir)
+    if config.logging.file and not os.path.isabs(config.logging.file):
+        config.logging.file = os.path.join(workdir, config.logging.file)
+    if config.logging.debug_file and not os.path.isabs(config.logging.debug_file):
+        config.logging.debug_file = os.path.join(workdir, config.logging.debug_file)
+    if getattr(config.logging, 'sql_file', None) and not os.path.isabs(config.logging.sql_file):
+        config.logging.sql_file = os.path.join(workdir, config.logging.sql_file)
 
     # Override waterfall and output paths to live under --output-dir
     # Waterfall output directory
@@ -79,27 +82,11 @@ def main():
         pass
 
     # ------------------------------------------------------------------
-    # Execute pre-run SQL files (if any) BEFORE running engines
+    # Prepare Pre-SQL engine (executes user-provided scripts before pipeline)
     # ------------------------------------------------------------------
+    from tlptaco.engines.presql import PreSQLEngine
 
-    def _split_sql(text: str) -> List[str]:
-        """Split raw SQL text on semicolons into individual statements.
-        A very naive split that works for well-formed scripts without
-        procedural blocks containing semicolons."""
-        stmts = [s.strip() for s in text.split(';')]
-        return [s for s in stmts if s]
-
-    pre_sql_files: List[str] = config.pre_sql or []
-    sql_statements: List[Tuple[str, str]] = []  # list of (file, stmt)
-    for path in pre_sql_files:
-        try:
-            with open(path, 'r') as f:
-                content = f.read()
-            for stmt in _split_sql(content):
-                sql_statements.append((path, stmt))
-        except Exception as e:
-            logger.error(f"Failed reading pre_sql file {path}: {e}")
-            raise
+    presql_engine = PreSQLEngine(config.pre_sql, runner, logger)
 
     # Instantiate engines
     eligibility_engine = EligibilityEngine(config.eligibility, runner, logger)
@@ -118,40 +105,46 @@ def main():
         elig_steps = eligibility_engine.num_steps()
         wf_steps = waterfall_engine.num_steps(eligibility_engine)
         layers = []
-        if sql_statements:
-            layers.append(("SQL Statements", len(sql_statements)))
+        presql_steps = presql_engine.num_steps()
+        if presql_steps:
+            layers.append(("Pre-SQL", presql_steps))
         layers.extend([("Eligibility", elig_steps), ("Waterfall", wf_steps)])
         if args.mode == "full":
             out_steps = output_engine.num_steps(eligibility_engine)
             layers.append(("Output", out_steps))
         # Run with progress bars
         with ProgressManager(layers, units="steps", title=config.offer_code) as pm:
-            # 1. run any pre_sql statements
-            if sql_statements:
-                for _file, stmt in sql_statements:
-                    logger.info(f"Executing pre-SQL from {_file}")
-                    try:
-                        runner.run(stmt)
-                    finally:
-                        pm.update("SQL Statements")
+            # 1. Pre-SQL stage
+            if presql_steps:
+                presql_engine.run(progress=pm)
 
-            # 2. run pipeline engines
+            # 2. main pipeline engines
             eligibility_engine.run(progress=pm)
+            start_wf = time.time()
             waterfall_engine.run(progress=pm)
+            logger.info(f"Waterfall stage completed in {time.time()-start_wf:.2f}s")
             if args.mode == "full":
+                start_out = time.time()
                 output_engine.run(progress=pm)
+                logger.info(f"Output stage completed in {time.time()-start_out:.2f}s")
     else:
         # Run without progress bars
         # Execute pre-sql first
-        for _file, stmt in sql_statements:
-            logger.info(f"Executing pre-SQL from {_file}")
-            runner.run(stmt)
+        presql_engine.run()
 
-        # main pipeline
+        # main pipeline with simple timing
+        start_elig = time.time()
         eligibility_engine.run()
+        logger.info(f"Eligibility stage completed in {time.time()-start_elig:.2f}s")
+
+        start_wf = time.time()
         waterfall_engine.run(eligibility_engine)
+        logger.info(f"Waterfall stage completed in {time.time()-start_wf:.2f}s")
+
         if args.mode == "full":
+            start_out = time.time()
             output_engine.run(eligibility_engine)
+            logger.info(f"Output stage completed in {time.time()-start_out:.2f}s")
 
     runner.cleanup()
 

@@ -8,6 +8,26 @@ from tlptaco.sql.generator import SQLGenerator
 import os
 
 class EligibilityEngine:
+    """Render and execute eligibility SQL to build the *smart* table.
+
+    The engine consumes:
+
+    * the parsed :class:`tlptaco.config.schema.EligibilityConfig` section
+      (table definitions, BA / segment checks, etc.)
+    * a live :class:`tlptaco.db.runner.DBRunner` for execution
+
+    It produces a physical table – ``cfg.eligibility_table`` – that contains
+    one *flag* column per check and all unique-identifier columns declared in
+    the config.
+
+    Example
+    -------
+    >>> elig_engine = EligibilityEngine(app_cfg.eligibility, runner)
+    >>> elig_engine.run()           # creates user_wpb.offer_elig
+
+    In the full CLI flow the object is created for you; the snippet above is
+    useful when driving tlptaco programmatically from a notebook.
+    """
     def __init__(self, cfg: EligibilityConfig, runner: DBRunner, logger=None):
         self.cfg = cfg
         self.runner = runner
@@ -113,6 +133,9 @@ class EligibilityEngine:
         self._prepare_sql()
 
         # Step 1: Attempt to drop the existing table.
+        # Use hasattr checks so unit tests with minimal DummyLogger don't fail
+        _log_debug = self.logger.debug if hasattr(self.logger, 'debug') else self.logger.info
+
         try:
             self.logger.info(f"Dropping existing table {self.cfg.eligibility_table}")
             self.runner.run(f"DROP TABLE {self.cfg.eligibility_table};")
@@ -128,3 +151,37 @@ class EligibilityEngine:
             self.runner.run(stmt)
             if progress:
                 progress.update("Eligibility")
+
+        # ------------------------------------------------------------------
+        # Post-run stats: total rows & distinct counts for each identifier
+        # ------------------------------------------------------------------
+        try:
+            if hasattr(self.runner, 'to_df'):
+                # Total row count of the smart table
+                df_cnt = self.runner.to_df(
+                    f"SELECT COUNT(*) AS cnt FROM {self.cfg.eligibility_table}"
+                )
+                total_rows = int(df_cnt.iloc[0, 0]) if not df_cnt.empty else None
+                if total_rows is not None:
+                    self.logger.info(
+                        f"Eligibility table {self.cfg.eligibility_table} contains {total_rows:,} rows"
+                    )
+
+            # Distinct counts for each unique identifier
+            if hasattr(self.runner, 'to_df'):
+                for uid in self.cfg.unique_identifiers:
+                    # strip alias for log readability but keep full identifier in SQL
+                    col_display = uid.split('.')[-1]
+                    try:
+                        df_dist = self.runner.to_df(
+                            f"SELECT COUNT(DISTINCT {uid}) AS cnt FROM {self.cfg.eligibility_table}"
+                        )
+                        distinct_cnt = int(df_dist.iloc[0, 0]) if not df_dist.empty else None
+                        if distinct_cnt is not None:
+                            self.logger.info(
+                                f"Unique values for {col_display}: {distinct_cnt:,}"
+                            )
+                    except Exception as e:
+                        _log_debug(f"Failed to fetch distinct count for {uid}: {e}")
+        except Exception as e:
+            _log_debug(f"Post-run eligibility stats failed: {e}")

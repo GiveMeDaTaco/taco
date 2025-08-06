@@ -6,6 +6,18 @@ from typing import List
 from tlptaco.db.connection import DBConnection
 
 class DBRunner:
+    """Thin orchestration layer over :class:`tlptaco.db.connection.DBConnection`.
+
+    All engines receive a shared *runner* so they can execute SQL without
+    worrying about connection lifecycles or logging boilerplate.
+
+    Example
+    -------
+    >>> runner = DBRunner(app_cfg.database, logger)
+    >>> runner.run("CREATE TABLE tmp AS SELECT * FROM src;")
+    >>> df = runner.to_df("SELECT COUNT(*) FROM tmp")
+    >>> runner.cleanup()
+    """
     # TODO add timings to logger
     def __init__(self, cfg, logger):
         db = cfg

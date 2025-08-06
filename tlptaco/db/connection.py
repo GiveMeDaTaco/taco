@@ -7,6 +7,19 @@ import warnings
 from typing import Any
 
 class DBConnection:
+    """Lightweight Teradata connection wrapper used by :class:`DBRunner`.
+
+    The class sticks to the DB-API surface exposed by the official
+    ``teradatasql`` driver so that higher-level code can rely on *standard*
+    ``.cursor().execute()`` semantics.
+
+    Example
+    -------
+    >>> conn = DBConnection(host='rchtera', user='me', password='pw')
+    >>> cur = conn.execute('SELECT 1')
+    >>> rows = cur.fetchall()
+    >>> conn.disconnect()
+    """
     # TODO add some logging outputs OR extend Daniel's connection
     def __init__(self, host: str, user: str, password: str, logmech: str = "KRB5"):
         self.host = host

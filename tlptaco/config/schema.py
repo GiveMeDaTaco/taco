@@ -105,7 +105,7 @@ class OutputOptions(BaseModel):
 # --- Config Sections with Validation ---
 
 class EligibilityConfig(BaseModel):
-    eligibility_table: str
+    eligibility_table: Optional[str] = None
     conditions: ConditionsConfig
     tables: List[TableConfig]
     unique_identifiers: List[str]
@@ -125,6 +125,8 @@ class EligibilityConfig(BaseModel):
     # Validate eligibility_table naming: identifier or schema.table
     @field_validator('eligibility_table', mode='before')
     def validate_eligibility_table(cls, v):  # type: ignore[name-defined]
+        if v is None:
+            return v
         if not isinstance(v, str) or not re.match(
             r'^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$', v
         ):
@@ -238,12 +240,54 @@ class LoggingConfig(BaseModel):
     debug_file: Optional[str]
     # New dedicated SQL log file capturing rendered SQL from templates
     sql_file: Optional[str] = None
+    # Optional list of section prefixes to *exclude* from the SQL log.
+    # e.g. ["waterfall", "output"] will suppress those sections.
+    sql_exclude_sections: Optional[List[str]] = []
 
 class DatabaseConfig(BaseModel):
-    host: str
+    host: str = "rchtera"
     user: str
     password: Optional[str]
     logmech: Optional[str] = "KRB5"
+
+# -----------------------------------------------------------------------------
+# Pre-SQL configuration --------------------------------------------------------
+# -----------------------------------------------------------------------------
+
+
+class PreSQLAnalytics(BaseModel):
+    """Optional analytics executed after a pre-SQL file.
+
+    Example YAML::
+
+        pre_sql:
+          - path: prepare_tables.sql
+            analytics:
+              table: sandbox.tmp_eligibility
+              unique_counts:
+                - customer_id
+                - [company_id, site_id]
+    """
+
+    table: str
+    # Each item either a single column name or a list of column names
+    unique_counts: List[Union[str, List[str]]]
+
+
+class PreSQLFile(BaseModel):
+    """Single pre-SQL file configuration (path + optional analytics)."""
+
+    path: str
+    analytics: Optional[PreSQLAnalytics] = None
+
+    @model_validator(mode="before")
+    def _coerce_legacy(cls, v):  # type: ignore[name-defined]
+        """Allow legacy string-only usage (path as bare string)."""
+        if isinstance(v, str):
+            return {"path": v}
+        if isinstance(v, dict):
+            return v
+        raise TypeError("Invalid pre_sql item: must be str or mapping")
 
 # --- Top-Level App Config with Cross-Section Validation ---
 
@@ -261,15 +305,38 @@ class AppConfig(BaseModel):
     eligibility: EligibilityConfig
     waterfall: WaterfallConfig
     output: OutputConfig
-    # Optional list of .sql files to run in order *before* eligibility logic
-    pre_sql: Optional[List[str]] = None
+    # Optional list of pre-sql file definitions (legacy: list of strings)
+    pre_sql: Optional[List[PreSQLFile]] = None
+
+    # ------------------------------------------------------------------
+    # Automatic defaults population (before main validation)
+    # ------------------------------------------------------------------
+
+    @model_validator(mode='before')
+    def _populate_defaults(cls, data):  # type: ignore[name-defined]
+        if not isinstance(data, dict):
+            return data
+
+        offer = data.get('offer_code') or 'run'
+
+        # ---- eligibility_table default ---------------------------------
+        elig = data.get('eligibility')
+        if isinstance(elig, dict) and not elig.get('eligibility_table'):
+            elig['eligibility_table'] = f"user_wpb.{offer}_elig"
+
+        # ---- ensure database.host default is applied when key missing --
+        db_cfg = data.get('database')
+        if isinstance(db_cfg, dict) and 'host' not in db_cfg:
+            db_cfg['host'] = 'rchtera'
+
+        return data
 
     @field_validator('pre_sql', mode='after')
     def _validate_pre_sql_paths(cls, v):  # type: ignore[name-defined]
         if not v:
             return v
         import os
-        missing = [p for p in v if not os.path.isfile(p)]
+        missing = [p.path for p in v if not os.path.isfile(p.path)]
         if missing:
             raise ValueError(f"pre_sql files not found: {missing}")
         return v

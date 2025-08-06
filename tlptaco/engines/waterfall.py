@@ -11,6 +11,24 @@ from datetime import datetime
 
 
 class WaterfallEngine:
+    """Generate grouped *waterfall* metrics and Excel reports.
+
+    The engine expects an *already executed* EligibilityEngine instance so
+    that the smart table exists with all flag columns.
+
+    Workflow
+    --------
+    1. Build SQL jobs for each *group* declared in
+       ``waterfall.count_columns``.
+    2. Execute those jobs, pivot results, and store in-memory DataFrames.
+    3. Feed the data to :pyfunc:`tlptaco.engines.waterfall_excel.write_waterfall_excel`
+       for a consolidated workbook (plus per-group sheets).
+
+    Example
+    -------
+    >>> wf_engine = WaterfallEngine(app_cfg.waterfall, runner)
+    >>> wf_engine.run(elig_engine)   # writes Excel under cfg.output_directory
+    """
     def __init__(self, cfg: WaterfallConfig, runner: DBRunner, logger=None):
         self.cfg = cfg
         self.runner = runner
@@ -22,6 +40,7 @@ class WaterfallEngine:
         # Cache for prepared steps and the eligibility engine
         self._waterfall_groups = None
         self._eligibility_engine = None
+        self._wf_indexes: list[tuple[list[str], str]] = []
 
     def _prepare_waterfall_steps(self, eligibility_engine):
         """
@@ -44,7 +63,7 @@ class WaterfallEngine:
             raw_cols = [item] if isinstance(item, str) else list(item)
             grp_name = '_'.join([col.split('.')[-1] for col in raw_cols])
             cols = [f"c.{col.split('.')[-1]}" for col in raw_cols]
-            groups.append({'name': grp_name, 'cols': cols})
+            groups.append({'name': grp_name, 'cols': cols, 'raw_cols': [col.split('.')[-1] for col in raw_cols]})
 
         templates_dir = os.path.join(os.path.dirname(__file__), '..', 'sql', 'templates')
         gen = SQLGenerator(templates_dir)
@@ -60,6 +79,8 @@ class WaterfallEngine:
         # 2. For each group, prepare the SQL and metadata for each report section
         for grp in groups:
             name, uniq_ids = grp['name'], grp['cols']
+            # Store raw column names for future index creation
+            grp['base_cols'] = [c.split('.')[-1] for c in uniq_ids]
             sql_jobs = []
 
             # --- SECTION 1: MAIN/BASE WATERFALL ---
@@ -147,7 +168,24 @@ class WaterfallEngine:
 
             out_path = os.path.join(self.cfg.output_directory,
                                     f"waterfall_report_{elig_cfg.eligibility_table}_{name}.xlsx")
-            self._waterfall_groups.append({'name': name, 'jobs': sql_jobs, 'output_path': out_path})
+
+            self._waterfall_groups.append({'name': name,
+                                           'jobs': sql_jobs,
+                                           'output_path': out_path,
+                                           'raw_cols': grp['raw_cols']})
+
+        # ------------------------------------------------------------------
+        # Derive a unique set of index definitions for eligibility table
+        # ------------------------------------------------------------------
+        index_sets: dict[tuple[str, ...], str] = {}
+        for g in self._waterfall_groups:
+            cols_tuple = tuple(g['raw_cols'])
+            if cols_tuple not in index_sets:
+                base_name = 'idx_' + '_'.join(cols_tuple)
+                # Teradata object names <= 30 chars
+                index_sets[cols_tuple] = base_name[:30]
+
+        self._wf_indexes = [(cols, idx_name) for cols, idx_name in index_sets.items()]
 
     def num_steps(self, eligibility_engine) -> int:
         """
@@ -184,7 +222,25 @@ class WaterfallEngine:
                 "An eligibility_engine instance must be provided either to run() or to a prior num_steps() call.")
 
         self._prepare_waterfall_steps(engine_to_use)
+
+        # ------------------------------------------------------------------
+        # Ensure secondary indexes exist on eligibility table for each group
+        # ------------------------------------------------------------------
+        elig_tbl = engine_to_use.cfg.eligibility_table
+        if hasattr(self, '_wf_indexes'):
+            for cols, idx_name in getattr(self, '_wf_indexes', []):
+                col_list = ', '.join(cols)
+                try:
+                    self.logger.info(f"Creating index {idx_name} on {elig_tbl} ({col_list})")
+                    self.runner.run(f"CREATE INDEX {idx_name} ON {elig_tbl} ({col_list});")
+                    self.runner.run(f"COLLECT STATISTICS INDEX {idx_name} ON {elig_tbl};")
+                except Exception as e:
+                    # Index may already exist; log at debug level
+                    if hasattr(self.logger, 'debug'):
+                        self.logger.debug(f"Index {idx_name} creation skipped: {e}")
         os.makedirs(self.cfg.output_directory, exist_ok=True)
+        from tlptaco.utils.fs import grant_group_rwx
+        grant_group_rwx(self.cfg.output_directory)
 
         # Collect compiled metrics for *all* groups. Each item will be a tuple
         # (group_name, compiled_sections)

@@ -137,6 +137,10 @@ def write_waterfall_excel(
 
     wb.save(output_path)
 
+    # Adjust permissions for group-sharing
+    from tlptaco.utils.fs import grant_group_rwx
+    grant_group_rwx(output_path)
+
 
 # ────────────────────────────────────────────────────────────────────────────────
 # Private helpers ----------------------------------------------------------------

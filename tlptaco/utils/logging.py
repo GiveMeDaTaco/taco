@@ -18,6 +18,12 @@ LEVEL_EMOJI = {
     "CRITICAL": "🔥",
 }
 
+# -----------------------------------------------------------------------------
+# Runtime control for SQL section exclusion
+# -----------------------------------------------------------------------------
+
+_SQL_EXCLUDE_SECTIONS: set[str] = set()
+
 class EmojiFormatter(logging.Formatter):
     """
     Logging Formatter that injects an emoji based on the log level.
@@ -38,6 +44,7 @@ def configure_logging(cfg, verbose=False):
     root = logging.getLogger()
     root.setLevel(logging.DEBUG)
     from datetime import datetime
+    from tlptaco.utils.fs import grant_group_rwx
 
     # Prepare EmojiFormatter for file handlers or fallback console
     fmt_str = "%(emoji)s %(asctime)s %(name)s %(levelname)s: %(message)s"
@@ -77,12 +84,14 @@ def configure_logging(cfg, verbose=False):
         fh.setLevel(file_level)
         fh.setFormatter(fmt)
         root.addHandler(fh)
+        grant_group_rwx(fh.baseFilename)
     # Debug file handler
     if getattr(cfg, 'debug_file', None):
         dfh = logging.FileHandler(cfg.debug_file)
         dfh.setLevel(logging.DEBUG)
         dfh.setFormatter(fmt)
         root.addHandler(dfh)
+        grant_group_rwx(dfh.baseFilename)
 
     # ---------------------------------------------------------------------
     # Dedicated SQL logger – captures raw SQL strings for easy copy-paste
@@ -100,6 +109,7 @@ def configure_logging(cfg, verbose=False):
         # Use plain formatter: message only – keeps SQL clean for copy-paste
         sql_fh.setFormatter(logging.Formatter('%(message)s'))
         sql_logger.addHandler(sql_fh)
+        grant_group_rwx(sql_fh.baseFilename)
 
     # ------------------------------------------------------------------
     # Insert a big ASCII header at the beginning of *every* log file to
@@ -115,6 +125,13 @@ def configure_logging(cfg, verbose=False):
     sql_logger = logging.getLogger('tlptaco.sql')
     if sql_logger.handlers:
         sql_logger.info(run_header)
+
+    # ------------------------------------------------------------------
+    # Store list of SQL sections to exclude in a module-level set.
+    # ------------------------------------------------------------------
+    global _SQL_EXCLUDE_SECTIONS  # noqa: PLW0603 – module-level mutation
+    sections = getattr(cfg, 'sql_exclude_sections', []) or []
+    _SQL_EXCLUDE_SECTIONS = {s.lower() for s in sections}
 
     return root
 
@@ -137,6 +154,10 @@ def log_sql_section(section: str, sql_text: str):
     if not logger.handlers:
         # SQL logger not configured – nothing to do
         return
+    # Respect exclusion list
+    if _SQL_EXCLUDE_SECTIONS and section.lower().split()[0] in _SQL_EXCLUDE_SECTIONS:
+        return
+
     header_line = '#' * 80
     logger.info(header_line)
     logger.info(f"# {section.upper()} SQL")

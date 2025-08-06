@@ -8,6 +8,18 @@ except ImportError:
     Environment = FileSystemLoader = select_autoescape = None
 
 class SQLGenerator:
+    """Render Jinja2 SQL templates.
+
+    The generator keeps a dedicated Jinja *Environment* pointing at the
+    ``sql/templates`` directory so that engines only need to pass a context
+    dict and a template file name.
+
+    Example
+    -------
+    >>> gen = SQLGenerator('/path/to/templates')
+    >>> sql = gen.render('eligibility.sql.j2', {'table': 't'})
+    >>> print(sql[:60])
+    """
     def __init__(self, templates_dir: str):
         if Environment is None:
             raise ImportError("jinja2 is required to render SQL templates; please install jinja2")

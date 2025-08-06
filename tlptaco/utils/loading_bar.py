@@ -59,13 +59,16 @@ from typing import List, Tuple
 
 from rich.console import Console, Group
 from rich.live import Live
+# NOTE: We swapped *TimeRemainingColumn* for *TimeElapsedColumn* so the
+# progress display now shows **total run time** instead of ETA as per user
+# request (2025-08-06).
 from rich.progress import (
     BarColumn,
     DownloadColumn,
     Progress,
     SpinnerColumn,
     TextColumn,
-    TimeRemainingColumn,
+    TimeElapsedColumn,
     TransferSpeedColumn,
 )
 
@@ -84,7 +87,7 @@ def _build_columns(units: str, overall: bool = False, title: str = "Running"):
                 TextColumn(f"[bold green][+] {title}", justify="right"),
                 BarColumn(bar_width=None, complete_style="cyan"),
                 DownloadColumn(binary_units=True),
-                TimeRemainingColumn(),
+                TimeElapsedColumn(),
             )
         return (
             SpinnerColumn(style="bold magenta"),
@@ -92,7 +95,7 @@ def _build_columns(units: str, overall: bool = False, title: str = "Running"):
             BarColumn(bar_width=None),
             DownloadColumn(binary_units=True),
             TransferSpeedColumn(),
-            TimeRemainingColumn(),
+            TimeElapsedColumn(),
         )
 
     # steps mode
@@ -101,14 +104,14 @@ def _build_columns(units: str, overall: bool = False, title: str = "Running"):
             TextColumn(f"[bold green][+] {title}", justify="right"),
             BarColumn(bar_width=None, complete_style="cyan"),
             TextColumn("[progress.percentage]{task.completed}/{task.total} steps"),
-            TimeRemainingColumn(),
+            TimeElapsedColumn(),
         )
     return (
         SpinnerColumn(style="bold magenta"),
         TextColumn("[progress.description]{task.description}"),
         BarColumn(bar_width=None),
         TextColumn("{task.completed}/{task.total} steps"),
-        TimeRemainingColumn(),
+        TimeElapsedColumn(),
     )
 
 # ────────────────────────────────────────────────────────────────────────────────

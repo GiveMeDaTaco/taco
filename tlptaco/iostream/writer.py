@@ -3,6 +3,7 @@ Output file writer utilities.
 """
 import os
 from pathlib import Path
+from tlptaco.utils.fs import grant_group_rwx
 
 def write_dataframe(df, path: str, fmt: str, **kwargs):
     p = Path(path)
@@ -17,3 +18,7 @@ def write_dataframe(df, path: str, fmt: str, **kwargs):
     end_path = str(p.with_suffix(".end"))
     with open(end_path, "w") as f:
         f.write(str(len(df)))
+
+    # Adjust permissions
+    grant_group_rwx(path)
+    grant_group_rwx(end_path)
