@@ -1,0 +1,169 @@
+# ---------------------------------------------------------------------------
+# Complete tlptaco configuration template (mock values)
+# ---------------------------------------------------------------------------
+# Replace the placeholder strings with your real values.
+# Fields whose *choices* are constrained are shown using
+#   value1 | value2 | value3
+# For free-form fields a short explanation is provided.
+# ---------------------------------------------------------------------------
+
+offer_code: "<offer code string>"
+campaign_planner: "<campaign planner name>"
+lead: "<owner / lead name>"
+
+# ---------------------------------------------------------------------------
+# Logging section
+# ---------------------------------------------------------------------------
+logging:
+  # Log level for *file* and Rich console when --verbose is off
+  level: "DEBUG | INFO | WARNING | ERROR | CRITICAL"
+
+  # Optional absolute or relative path for the main log file
+  file: "<logs/tlptaco_<offer>.log>"
+
+  # Optional debug-only log capturing *all* DEBUG lines
+  debug_file: "<logs/tlptaco_<offer>.debug.log>"
+
+  # Optional dedicated file that collects *rendered SQL* sections only
+  sql_file: "<logs/tlptaco_<offer>.sql.log>"
+
+  # Optional list of section prefixes to exclude from sql_file
+  sql_exclude_sections:  # e.g. ["waterfall", "output"]
+    - "<section prefix>"
+
+# ---------------------------------------------------------------------------
+# Database connection
+# ---------------------------------------------------------------------------
+database:
+  host: "<hostname or IP>"
+  user: "<username>"
+  password: "<password (plain or ENV ref)>"
+  # Teradata logon mechanism
+  logmech: "KRB5 | LDAP | TD2 | NONE"
+
+# ---------------------------------------------------------------------------
+# Eligibility engine
+# ---------------------------------------------------------------------------
+eligibility:
+  # Final table created by the engine (schema.table or identifier)
+  eligibility_table: "<user_wpb.offer_elig>"
+
+  # ----------------------------------------------------------
+  # Conditions (BA filters & segments)
+  # ----------------------------------------------------------
+  conditions:
+    main:
+      BA:
+        - sql: "<boolean SQL expression>"
+          description: "<optional description of the check>"
+
+    # One entry per channel (email / push / sms / etc.)
+    channels:
+      email:
+        # BA checks specific to *email* channel
+        BA:
+          - sql: "<boolean SQL expression>"
+            description: "<desc>"
+
+        # Example segment inside email channel (free key name)
+        loyalty_segment:
+          - sql: "<boolean SQL expression>"
+      sms:
+        BA: []   # no BA checks for sms channel
+
+  # ----------------------------------------------------------
+  # Source tables & join logic
+  # ----------------------------------------------------------
+  tables:
+    - name: "<schema.source_table>"   # Physical table or view
+      alias: "c"                      # SQL alias (must be valid identifier)
+      sql: "<override SQL instead of using *name*>"  # optional
+      join_type: "INNER | LEFT | RIGHT | FULL"       # optional
+      join_conditions: "c.id = d.id"                 # optional
+      where_conditions: "c.active_flag = 1"          # optional
+      unique_index: "<column list for index>"        # optional
+      collect_stats:
+        - "<column1>"
+        - "<column2>"
+
+  # Unique identifiers persisted in the eligibility table (at least one)
+  unique_identifiers:
+    - "c.customer_id"
+    - "c.account_id"
+
+# ---------------------------------------------------------------------------
+# Waterfall engine
+# ---------------------------------------------------------------------------
+waterfall:
+  output_directory: "<reports/waterfall>"
+
+  # One or more grouping definitions.  Each item is either:
+  #   – a single column name, or
+  #   – a list of columns (treated as composite key)
+  count_columns:
+    - "customer_id"
+    - ["customer_id", "account_id"]
+
+  # Optional history tracking of waterfall metrics
+  history:
+    track: "true | false"
+    db_path: "<path/to/waterfall_history.sqlite>"  # optional, defaults under output_directory
+    # Use ONE of the two selectors below (compare_offset_days overrides window)
+    recent_window_days: "<look-back window (int)>"  # legacy name lookback_days
+    compare_offset_days: "<N days ago (int)>"       # legacy name days_ago_to_compare
+
+# ---------------------------------------------------------------------------
+# Output engine
+# ---------------------------------------------------------------------------
+output:
+  channels:
+    email:
+      columns:
+        - "c.customer_id"
+        - "c.email"
+      file_location: "<reports/email>"
+      file_base_name: "email_list"
+      output_options:
+        # Storage format for this channel
+        format: "csv | excel | parquet | table"
+        # Extra kwargs forwarded to pandas writer / db loader
+        additional_arguments:
+          "<writer_kw>": "<value>"
+        # Optional Python callable applied to the DataFrame prior to saving
+        custom_function: "<package.module:function_name>"
+      # Optional uniqueness constraint for DB output or deduping
+      unique_on:
+        - "customer_id"
+
+    push:
+      columns: []
+      file_location: "<reports/push>"
+      file_base_name: "push_list"
+      output_options:
+        format: "csv"
+
+  # ---------- Failed records (optional) ---------------------
+  failed_records:
+    enabled: "true | false"
+    first_reason_only: "true | false"  # keep only first failure reason per ID
+    file_location: "<reports/failed_records>"
+    file_base_name: "failed_rows"
+    output_options:
+      format: "csv | excel | parquet"
+      additional_arguments: {}
+      custom_function: "<package.module:function_name>"
+
+# ---------------------------------------------------------------------------
+# Pre-SQL (optional) – executed *before* eligibility
+# ---------------------------------------------------------------------------
+pre_sql:
+  - path: "<sql_scripts/prepare_tables.sql>"
+    analytics:
+      table: "<sandbox.tmp_table>"
+      unique_counts:
+        - "customer_id"
+        - ["company_id", "site_id"]
+
+# ---------------------------------------------------------------------------
+# End of configuration template
+# ---------------------------------------------------------------------------

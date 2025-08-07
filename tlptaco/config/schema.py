@@ -194,6 +194,8 @@ class OutputChannelConfig(BaseModel):
     file_base_name: str
     output_options: OutputOptions
     unique_on: Optional[List[str]] = []
+    # Optional explicit data types per column, e.g.  {"c.id": "VARCHAR(9)"}
+    column_types: Optional[Dict[str, str]] = None
 
     @model_validator(mode='after')
     def check_unique_on_are_in_columns(cls, self) -> 'OutputChannelConfig':  # type: ignore[name-defined]
@@ -210,6 +212,16 @@ class OutputChannelConfig(BaseModel):
                     raise ValueError(
                         f"'unique_on' columns {missing} are not present in the selected 'columns'."
                     )
+        return self
+
+    @model_validator(mode='after')
+    def check_column_types_subset(cls, self) -> 'OutputChannelConfig':  # type: ignore[name-defined]
+        if self.column_types:
+            unknown = set(self.column_types.keys()) - set(self.columns)
+            if unknown:
+                raise ValueError(
+                    f"'column_types' keys {unknown} are not present in 'columns' list."
+                )
         return self
 
 # -----------------------------------------------------------------------------

@@ -163,6 +163,12 @@ def test_full_campaign_from_yaml(tmp_path, monkeypatch):
     out_engine = OutputEngine(app_cfg.output, runner, logger)
     out_engine.run(elig_engine)
     # Validate outputs for each channel
-    expected = {'email_out.csv', 'sms_out.parquet', 'push_out.xlsx'}
+    from datetime import datetime
+    today = datetime.now().strftime('%Y%m%d')
+    expected = {
+        f'email_out_{today}.csv',
+        f'sms_out_{today}.parquet',
+        f'push_out_{today}.xlsx',
+    }
     got = {Path(r['path']).name for r in out_records}
     assert got == expected

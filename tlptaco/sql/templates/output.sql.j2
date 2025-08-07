@@ -8,7 +8,13 @@
 --   unique_on: A list of columns to partition by for deduplication (e.g., ['c.customer_id']).
 --
 SELECT
-    {{ columns|join(',\n    ') }},
+    {%- for col in columns %}
+    {%- if column_types and column_types.get(col) %}
+    CAST({{ col }} AS {{ column_types[col] }}) AS {{ col.split('.')[-1] }}
+    {%- else %}
+    {{ col }}
+    {%- endif %}{{ ',' if not loop.last else '' }}
+    {%- endfor %},
     template_id
 FROM (
     SELECT

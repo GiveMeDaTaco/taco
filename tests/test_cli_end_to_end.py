@@ -118,10 +118,16 @@ def test_cli_end_to_end(tmp_path, capture_writes):
     recs = out_captured['records']
     assert len(recs) == 3, "Expected 3 output channels (email, sms, push)"
 
-    expected_suffixes = {
-        'email_list.csv',
-        'sms_list.parquet',
-        'push_list.xlsx',
+    # Expect filenames ending with today's YYYYMMDD date suffix
+    from datetime import datetime
+    today = datetime.now().strftime('%Y%m%d')
+
+    expected_patterns = {
+        fr'email_list_{today}\.csv',
+        fr'sms_list_{today}\.parquet',
+        fr'push_list_{today}\.xlsx',
     }
+    import re
     got_suffixes = {Path(r['path']).name for r in recs}
-    assert got_suffixes == expected_suffixes
+    for pattern in expected_patterns:
+        assert any(re.fullmatch(pattern, fname) for fname in got_suffixes), f"Missing file matching {pattern}"

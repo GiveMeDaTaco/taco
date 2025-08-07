@@ -123,7 +123,10 @@ class OutputEngine:
             # --- END MODIFICATION ---
 
             context = {'eligibility_table': elig_cfg.eligibility_table, 'columns': out_cfg.columns,
-                       'unique_on': out_cfg.unique_on, 'cases': cases}
+                       'unique_on': out_cfg.unique_on,
+                       'cases': cases,
+                       'column_types': out_cfg.column_types or {},
+                       }
             sql = gen.render('output.sql.j2', context)
 
             # Log rendered SQL

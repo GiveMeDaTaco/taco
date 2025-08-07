@@ -275,6 +275,8 @@ DEFAULT_SNIPPETS = [
     "Reheating pizza..."
 ]
 
+random.shuffle(DEFAULT_SNIPPETS)
+
 class LoadingSpinner:
     """Simple CLI spinner with rotating missing dot and funny snippets."""
 

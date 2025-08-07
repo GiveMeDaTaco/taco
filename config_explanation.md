@@ -28,8 +28,8 @@ logging:
 database:
   host: <td-host>
   user: <username>
-  password: <password>                              # OPTIONAL when using KRB5
-  logmech: KRB5 | TD2                               # OPTIONAL (defaults KRB5)
+  password: <password>                              # OPTIONAL
+  logmech: KRB5 | LDAP                               # OPTIONAL (defaults KRB5)
 
 # ---------------------------------------------------------------------------
 # PRE-RUN SQL FILES (executed in order) – OPTIONAL
