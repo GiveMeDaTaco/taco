@@ -16,18 +16,45 @@
 --   bucketable_condition: OPTIONAL predicate used only by the Regain metric
 -- ---------------------------------------------------------------------------
 
-{# Build a helper list of ID column aliases without table prefix #}
+-- ---------------------------------------------------------------------------
+-- Helper Jinja variables (comment only in template)
+-- uid_cols      : identifier columns **without** table prefix (used in PARTITION BY)
+-- all_cols      : every flag column referenced by the query (BA + aux)
+-- cols_needed   : minimal projection list for base CTE (IDs + flags)
+-- check_sum     : pass-count expression used in ranking
+-- streak_expr   : longest-streak expression used in ranking (same as legacy)
+-- ---------------------------------------------------------------------------
+
+{# Strip table aliases from UID list #}
 {% set uid_cols = [] %}
 {% for _uid in unique_identifiers %}
     {% set _ = uid_cols.append(_uid.split('.')[-1]) %}
 {% endfor %}
+
+{# Complete list of flag columns used downstream #}
 {% if aux_columns is not defined %}{% set aux_columns = [] %}{% endif %}
 {% set all_cols = check_columns + (aux_columns if aux_columns else []) %}
+
+{# Combined list of columns required from the smart table #}
+{% set cols_needed = unique_identifiers + all_cols %}
+
 {% set check_sum = ' + '.join(check_columns) if check_columns else '0' %}
+
+{# Build streak_len expression once so we can re-use it in ORDER BY #}
+{% set streak_parts = [] %}
+{% for i in range(check_columns|length) %}
+    {%- set inner = [] %}
+    {%- for j in range(i+1) %}{% set _ = inner.append(check_columns[j]) %}{% endfor %}
+    {%- set _ = streak_parts.append(' * '.join(inner)) %}
+{% endfor %}
+{% set streak_expr = ' + '.join(streak_parts) if streak_parts else '0' %}
 
 -- TODO: see if I can replace * with the same column selection as the CTE flags table below for efficiency
 WITH base_population AS (
-    SELECT *
+    -- Only project the columns required for subsequent steps to keep spool
+    -- space low (UIDs + flag columns).
+    SELECT
+        {{ cols_needed | join(', ') }}
     FROM {{ eligibility_table }} c
     {%- if pre_filter %}
     WHERE {{ pre_filter }}
@@ -39,26 +66,21 @@ WITH base_population AS (
 deduped AS (
     SELECT *
     FROM (
-        SELECT
-            bp.*,
-            {{ check_sum }} AS pass_cnt,
-            -- Longest unbroken streak of passes from the left
-            (
-                {% for i in range(check_columns|length) %}
-                    {%- for j in range(i+1) %}{{ check_columns[j] }}{% if j < i %} * {% endif %}{% endfor %}
-                    {%- if not loop.last %} + {% endif %}
-                {% endfor %}
-            ) AS streak_len,
+    SELECT
+            {% for col in cols_needed %}bp.{{ col.split('.')[-1] }}{{ ',' if not loop.last else ',' }}{% endfor %}  -- minimal set
+            {{ check_sum }}                        AS pass_cnt,
+            {{ streak_expr }}                      AS streak_len,
             ROW_NUMBER() OVER (
                 PARTITION BY {{ uid_cols | join(', ') }}
                 ORDER BY pass_cnt DESC, streak_len DESC
             ) AS _rn
-        FROM base_population bp
-    ) x
+        FROM base_population AS bp
+    ) d
     WHERE _rn = 1
 ),
 
 flags AS (
+    -- Final, lightweight set used by the metric UNIONs below.
     SELECT
         {% for uid in uid_cols %}{{ uid }}{{ "," if not loop.last }}{% endfor %}
         {%- if all_cols %}, {% endif %}
@@ -86,9 +108,7 @@ FROM (
     {% for col in check_columns %}
     SELECT 'unique_drops' AS stat_name,
            '{{ col }}'    AS check_name,
-           SUM(CASE WHEN {{ col }} = 0
-                    {% if check_columns|length > 1 %}AND ( {%- for other in check_columns if other != col %}{{ other }} = 1{%- if not loop.last %} AND {% endif %}{% endfor %} ){% endif %}
-               THEN 1 ELSE 0 END) AS cntr
+           SUM(CASE WHEN {{ col }} = 0 THEN 1 ELSE 0 END) AS cntr
     FROM flags
     {% if not loop.last %}UNION ALL{% endif %}
     {% endfor %}
@@ -112,9 +132,9 @@ FROM (
     {% for col in check_columns %}
     SELECT 'cumulative_drops' AS stat_name,
            '{{ col }}'       AS check_name,
-           COUNT(*) - SUM(CASE WHEN {{ col }} = 1
-                              {%- for prev in check_columns[:loop.index0] %} AND {{ prev }} = 1{%- endfor %}
-                         THEN 1 ELSE 0 END) AS cntr
+           SUM(
+               CASE WHEN {% for prev in check_columns[:loop.index0+1] %} {{ prev }} = 0 {% if not loop.last %} OR {% endif %}{% endfor %}
+               THEN 1 ELSE 0 END) AS cntr
     FROM flags
     {% if not loop.last %}UNION ALL{% endif %}
     {% endfor %}

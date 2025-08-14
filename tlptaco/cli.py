@@ -84,19 +84,31 @@ def main():
     # ------------------------------------------------------------------
     # Prepare Pre-SQL engine (executes user-provided scripts before pipeline)
     # ------------------------------------------------------------------
-    from tlptaco.engines.presql import PreSQLEngine
 
-    presql_engine = PreSQLEngine(config.pre_sql, runner, logger)
+    from tlptaco.engines.presql import PreSQLEngine
+    from tlptaco.engines.postsql import PostSQLEngine
+
+    # Load optional user list for GRANTs
+    user_list = []
+    if config.user_access_list_file:
+        try:
+            with open(config.user_access_list_file, 'r', encoding='utf-8') as f:
+                user_list = [ln.strip() for ln in f if ln.strip()]
+        except Exception as e:
+            logger.warning(f"Failed reading user_access_list_file: {e}")
+
+    presql_engine = PreSQLEngine(config.pre_sql, runner, logger, user_list)
+    postsql_engine = PostSQLEngine(config.post_sql, runner, logger, user_list)
 
     # Instantiate engines
-    eligibility_engine = EligibilityEngine(config.eligibility, runner, logger)
+    eligibility_engine = EligibilityEngine(config.eligibility, runner, logger, user_list)
     waterfall_engine = WaterfallEngine(config.waterfall, runner, logger)
     # Propagate metadata from config
     waterfall_engine.offer_code = config.offer_code
     waterfall_engine.campaign_planner = config.campaign_planner
     waterfall_engine.lead = config.lead
     if args.mode == "full":
-        output_engine = OutputEngine(config.output, runner, logger)
+        output_engine = OutputEngine(config.output, runner, logger, user_list)
 
     if args.progress:
         # Lazy import of ProgressManager to avoid requiring rich if unused
@@ -112,6 +124,10 @@ def main():
         if args.mode == "full":
             out_steps = output_engine.num_steps(eligibility_engine)
             layers.append(("Output", out_steps))
+
+        post_steps = postsql_engine.num_steps()
+        if post_steps:
+            layers.append(("Post-SQL", post_steps))
         # Run with progress bars
         with ProgressManager(layers, units="steps", title=config.offer_code) as pm:
             # 1. Pre-SQL stage
@@ -127,6 +143,10 @@ def main():
                 start_out = time.time()
                 output_engine.run(progress=pm)
                 logger.info(f"Output stage completed in {time.time()-start_out:.2f}s")
+
+            # 4. Post-SQL stage
+            if post_steps:
+                postsql_engine.run(progress=pm)
     else:
         # Run without progress bars
         # Execute pre-sql first
@@ -146,7 +166,26 @@ def main():
             output_engine.run(eligibility_engine)
             logger.info(f"Output stage completed in {time.time()-start_out:.2f}s")
 
+        # Post-SQL (always attempt after main stages)
+        postsql_engine.run()
+
     runner.cleanup()
+
+    # ------------------------------------------------------------------
+    # Summarise log events
+    # ------------------------------------------------------------------
+    try:
+        from tlptaco.utils.logging import get_event_counts
+        counts = get_event_counts()
+        if counts:
+            summary = "Log summary – " + ", ".join(f"{lvl}:{cnt}" for lvl, cnt in sorted(counts.items()))
+            logger.info(summary)
+            # Echo to stdout if console logging wasn't verbose
+            if not args.verbose:
+                print(summary)
+    except Exception:
+        # Never fail CLI on summary problems
+        pass
 
 if __name__ == "__main__":
     main()

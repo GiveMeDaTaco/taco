@@ -33,10 +33,11 @@ class OutputEngine:
     unit tests you can monkey-patch its ``to_df`` method to return dummy
     DataFrames and avoid any real DB dependency.
     """
-    def __init__(self, cfg: OutputConfig, runner: DBRunner, logger=None):
+    def __init__(self, cfg: OutputConfig, runner: DBRunner, logger=None, grant_users: list[str] | None = None):
         self.cfg = cfg
         self.runner = runner
         self.logger = logger or get_logger("output")
+        self._grant_users = grant_users or []
         # Cache for prepared jobs and the eligibility engine
         self._output_jobs = None
         self._eligibility_engine = None
@@ -206,6 +207,16 @@ class OutputEngine:
                 )
                 self.logger.info(f"Creating output table {table_full}")
                 self.runner.run(create_sql)
+
+                # Grant privileges if requested
+                if self._grant_users:
+                    for usr in self._grant_users:
+                        try:
+                            self.runner.run(
+                                f"GRANT SELECT,INSERT,UPDATE,DELETE ON {table_full} TO {usr};")
+                            self.runner.run(f"GRANT DROP ON {table_full} TO {usr};")
+                        except Exception as e:
+                            self.logger.debug(f"Grant failed for {usr} on {table_full}: {e}")
             else:
                 df = self.runner.to_df(job['sql'])
                 self.logger.info(f"Fetched {len(df)} rows for channel {channel_name}")

@@ -54,14 +54,19 @@ class PreSQLEngine:
     def __init__(self,
                  files_cfg: Sequence[PreSQLFile] | None,
                  runner: DBRunner,
-                 logger=None):
+                 logger=None,
+                 user_list: list[str] | None = None):
         self.files_cfg: List[PreSQLFile] = list(files_cfg or [])
         self.runner = runner
         self.logger = logger or get_logger("presql")
+        self._grant_users = user_list or []
 
         # Prepared lists filled by _prepare()
-        self._sql_tasks: List[Tuple[str, str]] | None = None  # (file, stmt)
-        self._analytic_tasks: List[Tuple[str, str, Tuple[str, ...]]] | None = None  # (file, table, cols)
+        # Caches prepared tasks.  Each SQL task tuple is (file_path, statement, error_flag)
+        self._sql_tasks: List[Tuple[str, str, bool]] | None = None
+        # Analytic task tuple: (file_path, table_name, column_tuple, error_flag)
+        # tuple: (file_path, table, column_tuple, error_flag, grant_flag)
+        self._analytic_tasks: List[Tuple[str, str, Tuple[str, ...], bool, bool]] | None = None
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -98,8 +103,9 @@ class PreSQLEngine:
                 self.logger.error(f"Failed reading pre-SQL file {path}: {e}")
                 raise
 
+            # Record each individual SQL statement with the file's error flag
             for stmt in self._split_sql(content):
-                self._sql_tasks.append((path, stmt))
+                self._sql_tasks.append((path, stmt, item.error))
 
             # Build analytics tasks (if any)
             if item.analytics and item.analytics.unique_counts:
@@ -109,7 +115,8 @@ class PreSQLEngine:
                         col_tuple = (cols,)
                     else:
                         col_tuple = tuple(cols)
-                    self._analytic_tasks.append((path, table, col_tuple))
+                    grant_flag = bool(getattr(item.analytics, 'grant_access', False))
+                    self._analytic_tasks.append((path, table, col_tuple, item.error, grant_flag))
 
     # ------------------------------------------------------------------
     # Public API
@@ -134,22 +141,56 @@ class PreSQLEngine:
         layer_name = "Pre-SQL"
 
         # 1. Execute SQL statements
-        for _file, stmt in self._sql_tasks or []:
+        for _file, stmt, err_flag in self._sql_tasks or []:
             self.logger.info(f"Executing pre-SQL from {_file}")
-            self.runner.run(stmt)
+            try:
+                self.runner.run(stmt)
+            except Exception as e:
+                if err_flag:
+                    self.logger.error(
+                        f"Pre-SQL file {_file} failed and error flag is True – aborting execution: {e}")
+                    raise
+                # With error=False we log a warning and continue
+                self.logger.warning(
+                    f"Pre-SQL file {_file} statement failed but 'error' is False – continuing. Error: {e}")
+            finally:
+                if progress:
+                    progress.update(layer_name)
+
+        # 2. Execute analytics queries (distinct counts)
+        for _file, table, cols, err_flag, grant_flag in self._analytic_tasks or []:
+            col_list = ", ".join(cols)
+            sql = f"SELECT COUNT(DISTINCT {col_list}) AS cnt FROM {table}"
+            try:
+                df: pd.DataFrame = self.runner.to_df(sql)
+                cnt = int(df.iloc[0, 0]) if not df.empty else None
+                cols_disp = ", ".join(cols)
+                if cnt is not None:
+                    self.logger.info(
+                        f"[Pre-SQL analytics] {_file}: unique({cols_disp}) in {table} = {cnt:,}"
+                    )
+            except Exception as e:
+                if err_flag:
+                    self.logger.error(
+                        f"Analytics query from {_file} failed and error flag is True – aborting: {e}")
+                    raise
+                self.logger.warning(
+                    f"Analytics query from {_file} failed but 'error' is False – continuing. Error: {e}")
             if progress:
                 progress.update(layer_name)
 
-        # 2. Execute analytics queries (distinct counts)
-        for _file, table, cols in self._analytic_tasks or []:
-            col_list = ", ".join(cols)
-            sql = f"SELECT COUNT(DISTINCT {col_list}) AS cnt FROM {table}"
-            df: pd.DataFrame = self.runner.to_df(sql)
-            cnt = int(df.iloc[0, 0]) if not df.empty else None
-            cols_disp = ", ".join(cols)
-            if cnt is not None:
-                self.logger.info(
-                    f"[Pre-SQL analytics] {_file}: unique({cols_disp}) in {table} = {cnt:,}"
-                )
-            if progress:
-                progress.update(layer_name)
+            if grant_flag:
+                self._grant_table_access(table)
+
+    # ------------------------------------------------------------------
+    # Grants helper
+    # ------------------------------------------------------------------
+    def _grant_table_access(self, table: str):
+        if not self._grant_users:
+            return
+        for user in self._grant_users:
+            try:
+                self.runner.run(f"GRANT SELECT,INSERT,UPDATE,DELETE ON {table} TO {user};")
+                self.runner.run(f"GRANT DROP ON {table} TO {user};")
+            except Exception as e:
+                self.logger.warning(f"Failed granting privileges on {table} to {user}: {e}")

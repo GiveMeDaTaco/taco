@@ -19,6 +19,40 @@ LEVEL_EMOJI = {
 }
 
 # -----------------------------------------------------------------------------
+# Log event counter – counts emitted records per level for end-of-run summary
+# -----------------------------------------------------------------------------
+
+from collections import Counter
+from threading import Lock
+
+
+class EventCounterHandler(logging.Handler):
+    """A non-blocking handler that simply counts log records per **level**.
+
+    The handler keeps an internal :class:`collections.Counter` mapping
+    ``levelname -> count``.  It never formats or writes records, therefore it
+    adds negligible overhead.
+    """
+
+    def __init__(self):
+        super().__init__(level=logging.NOTSET)
+        self._counts: Counter[str] = Counter()
+        self._lock = Lock()
+
+    def emit(self, record: logging.LogRecord):  # noqa: D401 – emit is standard name
+        # Increment atomically to be safe under multithreading (e.g. rich Live).
+        with self._lock:
+            self._counts[record.levelname] += 1
+
+    def get_counts(self) -> dict[str, int]:
+        with self._lock:
+            return dict(self._counts)
+
+
+# Global reference so other modules (cli) can fetch counts at the end.
+_EVENT_COUNTER: EventCounterHandler | None = None
+
+# -----------------------------------------------------------------------------
 # Runtime control for SQL section exclusion
 # -----------------------------------------------------------------------------
 
@@ -43,6 +77,14 @@ def configure_logging(cfg, verbose=False):
     """
     root = logging.getLogger()
     root.setLevel(logging.DEBUG)
+
+    # ------------------------------------------------------------------
+    # Attach *once* a global EventCounterHandler so we can summarize events
+    # ------------------------------------------------------------------
+    global _EVENT_COUNTER  # noqa: PLW0603 – write to module-level singleton
+    if _EVENT_COUNTER is None:
+        _EVENT_COUNTER = EventCounterHandler()
+        root.addHandler(_EVENT_COUNTER)
     from datetime import datetime
     from tlptaco.utils.fs import grant_group_rwx
 
@@ -134,6 +176,21 @@ def configure_logging(cfg, verbose=False):
     _SQL_EXCLUDE_SECTIONS = {s.lower() for s in sections}
 
     return root
+
+
+# -------------------------------------------------------------------------
+# Public helper to fetch event counts
+# -------------------------------------------------------------------------
+
+
+def get_event_counts() -> dict[str, int]:
+    """Return a mapping {"INFO": 123, "ERROR": 2, ...} of log records seen.
+
+    Returns an empty dict if logging has not been configured yet.
+    """
+    if _EVENT_COUNTER is None:
+        return {}
+    return _EVENT_COUNTER.get_counts()
 
 
 # -------------------------------------------------------------------------

@@ -33,9 +33,20 @@
     {% set _ = uid_cols.append(_uid.split('.')[-1]) %}
 {% endfor %}
 
+{# ----------------------------------------------------------------------- #}
+{# Determine the complete list of flag columns required for downstream logic #}
+{# ----------------------------------------------------------------------- #}
+{% set all_seg_checks = [] %}
+{% for seg in segments %}
+    {% for chk in seg.checks %}{% if chk not in all_seg_checks %}{% set _ = all_seg_checks.append(chk) %}{% endif %}{% endfor %}
+{% endfor %}
+
+{% set cols_needed = unique_identifiers + all_seg_checks %}
+
 WITH base_population AS (
-    SELECT *
-    FROM {{ eligibility_table }} AS c         -- ▼ added AS
+    -- Narrow projection to just IDs + segment flag columns to minimise spool
+    SELECT {{ cols_needed | join(', ') }}
+    FROM {{ eligibility_table }} AS c
     WHERE {{ pre_filter }}
 ),
 
@@ -43,28 +54,29 @@ WITH base_population AS (
 -- Deduplication (same tie-break rules as full waterfall)
 -- ---------------------------------------------------------------------------
 
-{% set all_seg_checks = [] %}
-{% for seg in segments %}
-    {% for chk in seg.checks %}{% set _ = all_seg_checks.append(chk) %}{% endfor %}
+-- all_seg_checks already defined above
+
+{# Prepare helper expressions for ranking #}
+{% set seg_check_sum = all_seg_checks | join(' + ') if all_seg_checks else '0' %}
+{% set seg_streak_parts = [] %}
+{% for i in range(all_seg_checks|length) %}
+    {%- set inner = [] %}
+    {%- for j in range(i+1) %}{% set _ = inner.append(all_seg_checks[j]) %}{% endfor %}
+    {%- set _ = seg_streak_parts.append(' * '.join(inner)) %}
 {% endfor %}
+{% set seg_streak_expr = ' + '.join(seg_streak_parts) if seg_streak_parts else '0' %}
 
 deduped AS (
     SELECT * FROM (
-        SELECT bp.*,
-               -- total passes in *all* non-BA checks (used for ranking)
-               {% for chk in all_seg_checks %}{{ chk }}{%- if not loop.last %}+{% endif %}{% endfor %} AS pass_cnt,   -- ▼ opening tag no “-”
-               -- longest left-to-right streak of passes across all checks
-               (
-                   {% for i in range(all_seg_checks|length) %}
-                       {%- for j in range(i+1) %}{{ all_seg_checks[j] }}{% if j < i %} * {% endif %}{% endfor %}
-                       {%- if not loop.last %} + {% endif %}
-                   {% endfor %}
-               ) AS streak_len,
-               ROW_NUMBER() OVER (
-                   PARTITION BY {{ uid_cols | join(', ') }}
-                   ORDER BY pass_cnt DESC, streak_len DESC
-               ) AS _rn
-        FROM base_population AS bp            -- ▼ added AS
+        SELECT
+            bp.{{ cols_needed | join(', bp.') }},
+            {{ seg_check_sum }} AS pass_cnt,
+            {{ seg_streak_expr }} AS streak_len,
+            ROW_NUMBER() OVER (
+                PARTITION BY {{ uid_cols | join(', ') }}
+                ORDER BY pass_cnt DESC, streak_len DESC
+            ) AS _rn
+        FROM base_population AS bp
     ) t
     WHERE _rn = 1
 ),
@@ -130,15 +142,13 @@ FROM (
            SUM(
                CASE
                    {% if metric == 'unique_drops' %}
-                       WHEN {{ col }} = 0
-                            {%- if check_cols|length > 1 %} AND ({% for other in check_cols if other != col %} {{ other }} = 1 {% if not loop.last %}AND{% endif %}{% endfor %}){% endif %}
-                       THEN 1
+                       WHEN {{ col }} = 0 THEN 1
                    {% elif metric == 'incremental_drops' %}
                        WHEN {{ col }} = 0
                             {%- for prev in check_cols[:col_idx] %} AND {{ prev }} = 1{% endfor %}
                        THEN 1
                    {% elif metric == 'cumulative_drops' %}
-                       WHEN NOT ( {% for prev in check_cols[:col_idx+1] %} {{ prev }} = 1 {% if not loop.last %}AND{% endif %}{% endfor %} )
+                       WHEN {% for prev in check_cols[:col_idx+1] %} {{ prev }} = 0 {% if not loop.last %}OR{% endif %}{% endfor %}
                        THEN 1
                    {% elif metric == 'regain' %}
                        WHEN {{ col }} = 0

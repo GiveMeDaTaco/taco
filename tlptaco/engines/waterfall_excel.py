@@ -45,6 +45,11 @@ _BLOCK_HEADER_FILL = PatternFill(start_color="6495ED", end_color="6495ED", fill_
 _HIST_ONLY_FILL   = PatternFill(start_color="FFF9C4", end_color="FFF9C4", fill_type="solid")  # Light Yellow
 _CUR_ONLY_FILL    = PatternFill(start_color="C8E6C9", end_color="C8E6C9", fill_type="solid")  # Light Mint
 
+# New fills
+_SPACER_FILL      = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
+_BA_REMAIN_FILL   = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")  # Light grey
+_NONBA_REMAIN_FILL = _CUR_ONLY_FILL  # reuse mint fill
+
 
 # ────────────────────────────────────────────────────────────────────────────────
 # Public API --------------------------------------------------------------------
@@ -95,6 +100,23 @@ def write_waterfall_excel(
 
     _write_header(ws_cons, offer_code, campaign_planner, lead, current_date)
     _write_consolidated_table(ws_cons, conditions, compiled_current, starting_pops)
+
+    # ------------------------------------------------------------------
+    # Partner tab – only Incremental + Remaining metrics
+    # ------------------------------------------------------------------
+    partner_metrics = [("incremental_drops", "Drop Incremental"), ("remaining", "Remaining")]
+
+    ws_partner = wb.create_sheet(title="Partner", index=1)
+    _write_header(ws_partner, offer_code, campaign_planner, lead, current_date)
+
+    # Temporarily replace metric order for the partner write
+    global _METRIC_ORDER
+    orig_metric_order = _METRIC_ORDER
+    _METRIC_ORDER = partner_metrics
+    try:
+        _write_consolidated_table(ws_partner, conditions, compiled_current, starting_pops)
+    finally:
+        _METRIC_ORDER = orig_metric_order
 
     # ------------------------------------------------------------------
     # Per-group sheets ---------------------------------------------------
@@ -201,11 +223,23 @@ def _write_consolidated_table(ws, conditions: pd.DataFrame, compiled_groups: Lis
         ws.cell(row=row_idx, column=col_ptr, value=val).font = Font(size=10)
         col_ptr += len(_METRIC_ORDER) + 1
 
-    # Conditions rows – begin at row 5
+    # Conditions rows – begin at row 5 with spacer rows between sections
+    prev_section = None
+    last_row_by_section = {}
+
     for _, cond_row in conditions.reset_index().iterrows():
+        section = cond_row["Section"]
+
+        if prev_section is not None and section != prev_section:
+            # spacer row
+            row_idx += 1
+            for c in range(1, len(_BASE_TITLES) + 1 + (len(_METRIC_ORDER)+1)*len(compiled_groups)):
+                ws.cell(row=row_idx, column=c).fill = _SPACER_FILL
+
         row_idx += 1
+
         # Base descriptive columns
-        ws.cell(row=row_idx, column=1, value=cond_row["Section"]).font = Font(size=10)
+        ws.cell(row=row_idx, column=1, value=section).font = Font(size=10)
         ws.cell(row=row_idx, column=2, value=cond_row["Template"]).font = Font(size=10)
         ws.cell(row=row_idx, column=3, value=cond_row["#"]).font = Font(size=10)
         ws.cell(row=row_idx, column=4, value=cond_row["sql"]).font = Font(size=10)
@@ -220,6 +254,18 @@ def _write_consolidated_table(ws, conditions: pd.DataFrame, compiled_groups: Lis
                 col_ptr += 1
             # spacer
             col_ptr += 1
+
+        # Track last row per section for later highlighting
+        last_row_by_section[section] = row_idx
+        prev_section = section
+
+    # Highlight Remaining cells
+    rem_offset = _metric_remaining_offset()
+    for idx, (grp, _) in enumerate(compiled_groups):
+        start_col = len(_BASE_TITLES) + rem_offset + idx*(len(_METRIC_ORDER)+1)
+        for section, r in last_row_by_section.items():
+            fill = _BA_REMAIN_FILL if section.endswith('BA') or section == 'Base' else _NONBA_REMAIN_FILL
+            ws.cell(row=r, column=start_col).fill = fill
 
 
 def _write_group_table(
@@ -291,12 +337,22 @@ def _write_group_table(
         ws.cell(row=row_ptr, column=pop_col, value=start_pop).font = Font(size=10)
 
     # ------------------------------------------------------------------
-    # Condition rows – one per check
+    # Condition rows – one per check with spacer and later highlighting
     # ------------------------------------------------------------------
+    prev_section = None
+    last_row_by_section: Dict[str, int] = {}
+
     for _, cond_row in conditions.reset_index().iterrows():
+        section = cond_row["Section"]
+
+        if prev_section is not None and section != prev_section:
+            row_ptr += 1
+            for c in range(1, base_cols + block + 1):
+                ws.cell(row=row_ptr, column=c).fill = _SPACER_FILL
+
         row_ptr += 1
 
-        ws.cell(row=row_ptr, column=1, value=cond_row["Section"]).font = Font(size=10)
+        ws.cell(row=row_ptr, column=1, value=section).font = Font(size=10)
         ws.cell(row=row_ptr, column=2, value=cond_row["Template"]).font = Font(size=10)
         ws.cell(row=row_ptr, column=3, value=cond_row["#"]).font = Font(size=10)
         ws.cell(row=row_ptr, column=4, value=cond_row["sql"]).font = Font(size=10)
@@ -305,6 +361,16 @@ def _write_group_table(
         for m_idx, (mkey, _) in enumerate(_METRIC_ORDER):
             val = metrics_lookup.get(cond_row["check_name"], {}).get(mkey, "")
             ws.cell(row=row_ptr, column=col_cur + m_idx, value=val).font = Font(size=10)
+
+        last_row_by_section[section] = row_ptr
+        prev_section = section
+
+    # Highlight Remaining cells for each section
+    rem_col = col_cur + _metric_remaining_offset() -1
+    fill_ba = _BA_REMAIN_FILL
+    for section, r in last_row_by_section.items():
+        fill = fill_ba if section.endswith('BA') or section == 'Base' else _NONBA_REMAIN_FILL
+        ws.cell(row=r, column=rem_col).fill = fill
 
     # Leave a blank line after the table before returning next free row index
     return row_ptr + 2

@@ -28,10 +28,11 @@ class EligibilityEngine:
     In the full CLI flow the object is created for you; the snippet above is
     useful when driving tlptaco programmatically from a notebook.
     """
-    def __init__(self, cfg: EligibilityConfig, runner: DBRunner, logger=None):
+    def __init__(self, cfg: EligibilityConfig, runner: DBRunner, logger=None, user_list: list[str] | None = None):
         self.cfg = cfg
         self.runner = runner
         self.logger = logger or get_logger("eligibility")
+        self._grant_users = user_list or []
         self._sql_statements = None
 
     def _prepare_sql(self):
@@ -185,3 +186,14 @@ class EligibilityEngine:
                         _log_debug(f"Failed to fetch distinct count for {uid}: {e}")
         except Exception as e:
             _log_debug(f"Post-run eligibility stats failed: {e}")
+
+        # ------------------------------------------------------------------
+        # Grant privileges to additional users if configured
+        # ------------------------------------------------------------------
+        if self._grant_users:
+            for user in self._grant_users:
+                try:
+                    self.runner.run(f"GRANT SELECT,INSERT,UPDATE,DELETE ON {self.cfg.eligibility_table} TO {user};")
+                    self.runner.run(f"GRANT DROP ON {self.cfg.eligibility_table} TO {user};")
+                except Exception as e:
+                    _log_debug(f"Grant failed for {user} on {self.cfg.eligibility_table}: {e}")

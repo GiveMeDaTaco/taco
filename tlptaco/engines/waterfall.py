@@ -494,6 +494,13 @@ class WaterfallEngine:
         conn.close()
         self.logger.info(f"Waterfall run history appended to {db_path}")
 
+        # Ensure group permissions (rwx) on the DB file
+        try:
+            from tlptaco.utils.fs import grant_group_rwx
+            grant_group_rwx(db_path)
+        except Exception:
+            pass
+
     # ------------------------------------------------------------------
     # History *read* helper – fetch latest snapshot for a group
     # ------------------------------------------------------------------
