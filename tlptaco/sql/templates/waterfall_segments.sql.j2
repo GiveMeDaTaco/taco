@@ -87,19 +87,12 @@ WITH base_population AS (
 {% endfor %}
 {% set seg_streak_expr = ' + '.join(seg_streak_parts) if seg_streak_parts else '0' %}
 
+-- Rows are already unique per UID in the volatile base table; keep a simple
+-- pass-through CTE for compatibility with downstream references.
 deduped AS (
-    SELECT * FROM (
-        SELECT
-            bp.{{ cols_unq | join(', bp.') }},
-            {{ seg_check_sum }} AS pass_cnt,
-            {{ seg_streak_expr }} AS streak_len,
-            ROW_NUMBER() OVER (
-                PARTITION BY {{ uid_cols | join(', ') }}
-                ORDER BY pass_cnt DESC, streak_len DESC
-            ) AS _rn
-        FROM base_population AS bp
-    ) t
-    WHERE _rn = 1
+    SELECT
+        {{ cols_unq | join(', ') }}
+    FROM base_population AS bp
 ),
 
 -- ---------------------------------------------------------------------------

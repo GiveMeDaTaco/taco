@@ -1,6 +1,8 @@
 """
 Waterfall engine: computes waterfall metrics from the smart eligibility table.
 """
+# Allow | union type hints on Python ≤3.10
+from __future__ import annotations
 from tlptaco.config.schema import WaterfallConfig, EligibilityConfig
 from tlptaco.db.runner import DBRunner
 from tlptaco.utils.logging import get_logger
@@ -40,7 +42,123 @@ class WaterfallEngine:
         # Cache for prepared steps and the eligibility engine
         self._waterfall_groups = None
         self._eligibility_engine = None
-        self._wf_indexes: list[tuple[list[str], str]] = []
+        # Name of the session-local volatile base table once created
+        self._base_table: str | None = None
+
+    # ------------------------------------------------------------------
+    # Internal helper – build *one* volatile, deduplicated base table
+    # ------------------------------------------------------------------
+
+    def _create_volatile_base(self, eligibility_engine):
+        """Create a deduplicated VOLATILE table that holds only the columns
+        required by all subsequent waterfall queries.
+
+        The table is created **once per run** and dropped automatically
+        when the session ends.  When the method has already been executed
+        (``self._base_table`` not ``None``) it becomes a no-op so that
+        :py:meth:`run` can call it idempotently.
+        """
+
+        if self._base_table is not None:
+            # Already prepared in this session
+            return
+
+        self._base_table = 'vt_wf_base'
+
+        elig_cfg: EligibilityConfig = eligibility_engine.cfg
+
+        # Use session-local volatile table when available; fall back to the
+        # original eligibility table when the volatile table has not yet
+        # been created (e.g. during unit tests that call _prepare_* directly).
+        table_name = self._base_table or elig_cfg.eligibility_table
+        # Use the session-local deduplicated volatile table for all queries
+        table_name = self._base_table or elig_cfg.eligibility_table
+
+        # 1. Determine *all* flag columns referenced anywhere
+        flag_cols: list[str] = []
+
+        def _add_checks(checks):
+            for chk in checks:
+                if chk.name not in flag_cols:
+                    flag_cols.append(chk.name)
+
+        conds = elig_cfg.conditions
+        _add_checks(conds.main.BA)
+        for seg_checks in conds.main.segments.values():
+            _add_checks(seg_checks)
+        for ch_cfg in conds.channels.values():
+            _add_checks(ch_cfg.BA)
+            for seg_checks in ch_cfg.segments.values():
+                _add_checks(seg_checks)
+
+        # 2. Build list of unique-identifier columns **with aliases** so the
+        #    volatile table uses simple names (no schema/alias prefixes).
+        uid_cols_sql: list[str] = []  # expressions in SELECT list
+        uid_cols_pi: list[str] = []   # plain names for PRIMARY INDEX
+        for uid in elig_cfg.unique_identifiers:
+            if '.' in uid:
+                plain = uid.split('.')[-1]
+                uid_cols_sql.append(f"{uid} AS {plain}")
+                uid_cols_pi.append(plain)
+            else:
+                uid_cols_sql.append(uid)
+                uid_cols_pi.append(uid)
+
+        # 3. Flag columns as simple names (smart table already has them)
+        flag_cols_sql = ', '.join(flag_cols)
+
+        # 4. Build expressions for pass_cnt and streak_len (needed for
+        #    deduplication ranking)
+        pass_cnt_expr = ' + '.join(flag_cols) if flag_cols else '0'
+        # streak: sum of cumulative products
+        streak_parts: list[str] = []
+        for i in range(len(flag_cols)):
+            inner = ' * '.join(flag_cols[: i + 1])
+            streak_parts.append(inner)
+        streak_expr = ' + '.join(streak_parts) if streak_parts else '0'
+
+        # 5. Compose SQL – drop existing VT just in case
+        sql_statements: list[str] = []
+        sql_statements.append(f"DROP TABLE {self._base_table};")
+
+        select_cols_alias = ',\n           '.join(uid_cols_sql + flag_cols)
+        select_cols_inner = ', '.join(uid_cols_sql + flag_cols +
+                                      [f"{pass_cnt_expr} AS pass_cnt",
+                                       f"{streak_expr} AS streak_len",
+                                       "ROW_NUMBER() OVER (PARTITION BY " + ', '.join(uid_cols_pi) +
+                                       " ORDER BY pass_cnt DESC, streak_len DESC) AS _rn"])
+
+        create_sql = f"""
+CREATE MULTISET VOLATILE TABLE {self._base_table}
+, NO FALLBACK , NO BEFORE JOURNAL , NO AFTER JOURNAL
+AS (
+    SELECT {select_cols_alias}
+    FROM (
+        SELECT {select_cols_inner}
+        FROM {elig_cfg.eligibility_table} c
+    ) dt
+    WHERE _rn = 1
+) WITH DATA
+PRIMARY INDEX ({', '.join(uid_cols_pi)})
+ON COMMIT PRESERVE ROWS;
+"""
+        sql_statements.append(create_sql)
+
+        # Collect minimal stats (PI + first 10 flag columns – cheap)
+        for col in uid_cols_pi[:3]:
+            sql_statements.append(f"COLLECT STATISTICS COLUMN ({col}) ON {self._base_table};")
+        for col in flag_cols[:10]:
+            sql_statements.append(f"COLLECT STATISTICS COLUMN ({col}) ON {self._base_table};")
+
+        # Execute all statements; ignore DROP failures
+        for stmt in sql_statements:
+            try:
+                self.runner.run(stmt)
+            except Exception as ex:
+                if 'DROP TABLE' in stmt:
+                    # VT likely didn't exist – fine
+                    continue
+                raise
 
     def _prepare_waterfall_steps(self, eligibility_engine):
         """
@@ -56,6 +174,9 @@ class WaterfallEngine:
         self.logger.info("No cached steps found. Preparing waterfall groups and SQL.")
         self._waterfall_groups = []
         elig_cfg: EligibilityConfig = eligibility_engine.cfg
+
+        # Determine which physical table the templates should query
+        table_name = self._base_table or elig_cfg.eligibility_table
 
         # 1. Determine the grouping columns
         groups = []
@@ -87,7 +208,7 @@ class WaterfallEngine:
             main_ba_checks = [chk.name for chk in elig_cfg.conditions.main.BA]
             # Base waterfall (main BA) has no bucketable filter
             ctx_main = {
-                'eligibility_table': elig_cfg.eligibility_table,
+                'eligibility_table': table_name,
                 'unique_identifiers': uniq_ids,
                 'check_columns': main_ba_checks,
                 'aux_columns': [],
@@ -129,7 +250,7 @@ class WaterfallEngine:
                         aux_cols = []
 
                     ctx_chan_ba = {
-                        'eligibility_table': elig_cfg.eligibility_table,
+                        'eligibility_table': table_name,
                         'unique_identifiers': uniq_ids,
                         'check_columns': channel_ba_check_names,
                         'aux_columns': aux_cols,
@@ -157,7 +278,7 @@ class WaterfallEngine:
                         })
 
                     ctx_segments = {
-                        'eligibility_table': elig_cfg.eligibility_table,
+                        'eligibility_table': table_name,
                         'unique_identifiers': uniq_ids,
                         'pre_filter': segment_base_filter,
                         'segments': segments_to_process
@@ -174,18 +295,8 @@ class WaterfallEngine:
                                            'output_path': out_path,
                                            'raw_cols': grp['raw_cols']})
 
-        # ------------------------------------------------------------------
-        # Derive a unique set of index definitions for eligibility table
-        # ------------------------------------------------------------------
-        index_sets: dict[tuple[str, ...], str] = {}
-        for g in self._waterfall_groups:
-            cols_tuple = tuple(g['raw_cols'])
-            if cols_tuple not in index_sets:
-                base_name = 'idx_' + '_'.join(cols_tuple)
-                # Teradata object names <= 30 chars
-                index_sets[cols_tuple] = base_name[:30]
-
-        self._wf_indexes = [(cols, idx_name) for cols, idx_name in index_sets.items()]
+        # No secondary indexes are created: the volatile table has a PI and
+        # aggregates perform full-table scans that do not benefit from SI.
 
     def num_steps(self, eligibility_engine) -> int:
         """
@@ -216,28 +327,24 @@ class WaterfallEngine:
         # Determine which eligibility engine to use
         engine_to_use = eligibility_engine or self._eligibility_engine
 
-        # If no engine is available from either the argument or the cache, raise an error.
         if not engine_to_use:
             raise ValueError(
                 "An eligibility_engine instance must be provided either to run() or to a prior num_steps() call.")
 
+        # --------------------------------------------------------------
+        # Create the session-local volatile base table (idempotent)
+        # --------------------------------------------------------------
+        self._create_volatile_base(engine_to_use)
+
+        # Invalidate any cached preparation (built perhaps by num_steps())
+        # so that subsequent SQL uses the new base table name.
+        self._waterfall_groups = None
+
+        # Prepare SQL jobs (use the volatile table)
         self._prepare_waterfall_steps(engine_to_use)
 
-        # ------------------------------------------------------------------
-        # Ensure secondary indexes exist on eligibility table for each group
-        # ------------------------------------------------------------------
-        elig_tbl = engine_to_use.cfg.eligibility_table
-        if hasattr(self, '_wf_indexes'):
-            for cols, idx_name in getattr(self, '_wf_indexes', []):
-                col_list = ', '.join(cols)
-                try:
-                    self.logger.info(f"Creating index {idx_name} on {elig_tbl} ({col_list})")
-                    self.runner.run(f"CREATE INDEX {idx_name} ON {elig_tbl} ({col_list});")
-                    self.runner.run(f"COLLECT STATISTICS INDEX {idx_name} ON {elig_tbl};")
-                except Exception as e:
-                    # Index may already exist; log at debug level
-                    if hasattr(self.logger, 'debug'):
-                        self.logger.debug(f"Index {idx_name} creation skipped: {e}")
+        # No secondary indexes are created – volatile table and full-table
+        # aggregates do not benefit from them.
         os.makedirs(self.cfg.output_directory, exist_ok=True)
         from tlptaco.utils.fs import grant_group_rwx
         grant_group_rwx(self.cfg.output_directory)
