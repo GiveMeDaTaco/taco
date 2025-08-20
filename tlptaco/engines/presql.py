@@ -55,18 +55,31 @@ class PreSQLEngine:
                  files_cfg: Sequence[PreSQLFile] | None,
                  runner: DBRunner,
                  logger=None,
-                 user_list: list[str] | None = None):
+                 user_list: list[str] | None = None,
+                 *,
+                 layer_name: str = "Pre-SQL"):
         self.files_cfg: List[PreSQLFile] = list(files_cfg or [])
         self.runner = runner
         self.logger = logger or get_logger("presql")
         self._grant_users = user_list or []
+        # Progress layer label ("Pre-SQL" or "Post-SQL") used when updating
+        # the shared ProgressManager.  Making this configurable avoids hard
+        # coding a name that might not exist in the progress layout defined
+        # by the CLI.
+        self._layer_name = layer_name
 
         # Prepared lists filled by _prepare()
         # Caches prepared tasks.  Each SQL task tuple is (file_path, statement, error_flag)
         self._sql_tasks: List[Tuple[str, str, bool]] | None = None
-        # Analytic task tuple: (file_path, table_name, column_tuple, error_flag)
+        # Distinct-count analytic tasks
         # tuple: (file_path, table, column_tuple, error_flag, grant_flag)
-        self._analytic_tasks: List[Tuple[str, str, Tuple[str, ...], bool, bool]] | None = None
+        self._distinct_tasks: List[Tuple[str, str, Tuple[str, ...], bool, bool]] | None = None
+
+        # Group-count tasks – (file_path, table, column_tuple, error_flag)
+        self._group_tasks: List[Tuple[str, str, Tuple[str, ...], bool]] | None = None
+
+        # Preview tasks – (file_path, table, rows, columns_opt, error_flag)
+        self._preview_tasks: List[Tuple[str, str, int, tuple[str, ...] | None, bool]] | None = None
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -92,7 +105,9 @@ class PreSQLEngine:
             return
 
         self._sql_tasks = []
-        self._analytic_tasks = []
+        self._distinct_tasks = []
+        self._group_tasks = []
+        self._preview_tasks = []
 
         for item in self.files_cfg:
             path = item.path
@@ -107,16 +122,28 @@ class PreSQLEngine:
             for stmt in self._split_sql(content):
                 self._sql_tasks.append((path, stmt, item.error))
 
-            # Build analytics tasks (if any)
-            if item.analytics and item.analytics.unique_counts:
+            # Build analytics tasks (distinct counts, group counts, preview)
+            if item.analytics:
                 table = item.analytics.table
-                for cols in item.analytics.unique_counts:
-                    if isinstance(cols, str):
-                        col_tuple = (cols,)
-                    else:
-                        col_tuple = tuple(cols)
+
+                # --- distinct (unique) counts ---------------------------------------
+                for cols in item.analytics.unique_counts or []:
+                    col_tuple = (cols,) if isinstance(cols, str) else tuple(cols)
                     grant_flag = bool(getattr(item.analytics, 'grant_access', False))
-                    self._analytic_tasks.append((path, table, col_tuple, item.error, grant_flag))
+                    self._distinct_tasks.append((path, table, col_tuple, item.error, grant_flag))
+
+                # --- group counts ----------------------------------------------------
+                for cols in item.analytics.group_counts or []:
+                    col_tuple = (cols,) if isinstance(cols, str) else tuple(cols)
+                    self._group_tasks.append((path, table, col_tuple, item.error))
+
+                # --- preview sample rows -------------------------------------------
+                if item.analytics.preview is not None:
+                    rows = item.analytics.preview.rows
+                    cols = None
+                    if item.analytics.preview.columns:
+                        cols = tuple(item.analytics.preview.columns)
+                    self._preview_tasks.append((path, table, rows, cols, item.error))
 
     # ------------------------------------------------------------------
     # Public API
@@ -126,7 +153,11 @@ class PreSQLEngine:
         """Total number of *individual* tasks (SQL statements + analytics)."""
         self._prepare()
         sql_cnt = len(self._sql_tasks or [])
-        ana_cnt = len(self._analytic_tasks or [])
+        ana_cnt = (
+            len(self._distinct_tasks or []) +
+            len(self._group_tasks or []) +
+            len(self._preview_tasks or [])
+        )
         return sql_cnt + ana_cnt
 
     def run(self, progress=None):
@@ -138,7 +169,7 @@ class PreSQLEngine:
 
         self._prepare()
 
-        layer_name = "Pre-SQL"
+        layer_name = self._layer_name
 
         # 1. Execute SQL statements
         for _file, stmt, err_flag in self._sql_tasks or []:
@@ -157,8 +188,8 @@ class PreSQLEngine:
                 if progress:
                     progress.update(layer_name)
 
-        # 2. Execute analytics queries (distinct counts)
-        for _file, table, cols, err_flag, grant_flag in self._analytic_tasks or []:
+        # 2a. Execute distinct count analytics
+        for _file, table, cols, err_flag, grant_flag in self._distinct_tasks or []:
             col_list = ", ".join(cols)
             sql = f"SELECT COUNT(DISTINCT {col_list}) AS cnt FROM {table}"
             try:
@@ -181,6 +212,62 @@ class PreSQLEngine:
 
             if grant_flag:
                 self._grant_table_access(table)
+
+        # 2b. Execute group count analytics
+        for _file, table, cols, err_flag in self._group_tasks or []:
+            col_list = ", ".join(cols)
+            sql = (
+                f"SELECT {col_list}, COUNT(*) AS cnt FROM {table} "
+                f"GROUP BY {col_list} ORDER BY cnt DESC"
+            )
+            try:
+                df: pd.DataFrame = self.runner.to_df(sql)
+                self.logger.info(
+                    f"[Pre-SQL analytics] group counts by ({col_list}) – {len(df)} groups"
+                )
+                # Log first 20 rows as markdown table for readability
+                head = df.head(20)
+                try:
+                    md = head.to_markdown(index=False)
+                except Exception:
+                    md = head.to_string(index=False)
+                self.logger.info("\n" + md)
+            except Exception as e:
+                if err_flag:
+                    self.logger.error(
+                        f"Group-count query from {_file} failed and error flag is True – aborting: {e}")
+                    raise
+                self.logger.warning(
+                    f"Group-count query from {_file} failed but 'error' is False – continuing. Error: {e}")
+            finally:
+                if progress:
+                    progress.update(layer_name)
+
+        # 2c. Execute preview tasks
+        for _file, table, rows, cols, err_flag in self._preview_tasks or []:
+            col_expr = "*" if cols is None else ", ".join(cols)
+            # Use SAMPLE for Teradata; fallback generic TOP N
+            sql = f"SELECT {col_expr} FROM {table} SAMPLE {rows}"
+            try:
+                df: pd.DataFrame = self.runner.to_df(sql)
+                self.logger.info(
+                    f"[Pre-SQL analytics] preview ({rows} rows) of {table}"
+                )
+                try:
+                    md = df.head(rows).to_markdown(index=False)
+                except Exception:
+                    md = df.head(rows).to_string(index=False)
+                self.logger.info("\n" + md)
+            except Exception as e:
+                if err_flag:
+                    self.logger.error(
+                        f"Preview query from {_file} failed and error flag is True – aborting: {e}")
+                    raise
+                self.logger.warning(
+                    f"Preview query from {_file} failed but 'error' is False – continuing. Error: {e}")
+            finally:
+                if progress:
+                    progress.update(layer_name)
 
     # ------------------------------------------------------------------
     # Grants helper

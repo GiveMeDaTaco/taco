@@ -292,10 +292,20 @@ class PreSQLAnalytics(BaseModel):
     # Each item either a single column name or a list of column names
     unique_counts: List[Union[str, List[str]]]
 
+    # NEW: list of column sets for COUNT(*) GROUP BY queries
+    group_counts: List[Union[str, List[str]]] = []
+
+    # NEW: preview sample records as markdown
+    class PreviewConfig(BaseModel):
+        rows: int = 10  # number of rows to fetch
+        columns: Optional[List[str]] = None  # when None select *
+
+    preview: Optional[PreviewConfig] = None
+
     # When true the engine will GRANT SELECT/INSERT/UPDATE/DELETE/DROP on the
     # *table* to every user found in AppConfig.user_access_list_file
     grant_access: bool = False
-    grant_access: bool = False
+
 
 
 class PreSQLFile(BaseModel):

@@ -6,10 +6,16 @@ from tlptaco.engines.presql import PreSQLEngine as _Base
 
 
 class PostSQLEngine(_Base):
-    """Alias class with no behaviour changes – used for semantic clarity."""
+    """Post-SQL engine (reuses PreSQLEngine logic but different progress label)."""
 
-    # The implementation is entirely inherited from PreSQLEngine.  We only
-    # override __repr__ so logging messages are clearer.
+    def __init__(self,
+                 files_cfg,
+                 runner,
+                 logger=None,
+                 user_list: list[str] | None = None):
+        # Pass layer_name="Post-SQL" so progress manager recognises the label
+        super().__init__(files_cfg, runner, logger, user_list, layer_name="Post-SQL")
 
+    # Cosmetic repr for logging/debugging
     def __repr__(self):  # pragma: no cover – cosmetic
         return f"<PostSQLEngine tasks={self.num_steps()}>"

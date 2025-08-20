@@ -2,6 +2,7 @@
 Configure project-wide logging.
 """
 import logging
+import os
 try:
     from rich.logging import RichHandler
     from rich.text import Text
@@ -17,6 +18,12 @@ LEVEL_EMOJI = {
     "ERROR":    "❌",
     "CRITICAL": "🔥",
 }
+
+# -----------------------------------------------------------------------------
+# Determine project root once so we can truncate absolute paths in log output
+# -----------------------------------------------------------------------------
+
+_PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, os.pardir))
 
 # -----------------------------------------------------------------------------
 # Log event counter – counts emitted records per level for end-of-run summary
@@ -65,6 +72,12 @@ class EmojiFormatter(logging.Formatter):
     def format(self, record):
         # Attach emoji for the level
         record.emoji = LEVEL_EMOJI.get(record.levelname, "")
+        # Derive project-relative source path + line number for easy tracing
+        try:
+            rel_path = os.path.relpath(record.pathname, _PROJECT_ROOT)
+        except Exception:
+            rel_path = record.pathname  # fallback to absolute if relpath fails
+        record.src = f"{rel_path}:{record.lineno}"
         return super().format(record)
 
 def configure_logging(cfg, verbose=False):
@@ -89,7 +102,7 @@ def configure_logging(cfg, verbose=False):
     from tlptaco.utils.fs import grant_group_rwx
 
     # Prepare EmojiFormatter for file handlers or fallback console
-    fmt_str = "%(emoji)s %(asctime)s %(name)s %(levelname)s: %(message)s"
+    fmt_str = "%(emoji)s %(asctime)s %(src)s %(levelname)s: %(message)s"
     fmt = EmojiFormatter(fmt_str, datefmt="[%X]")
     # Optionally add console handler only if verbose flag is set
     if verbose:

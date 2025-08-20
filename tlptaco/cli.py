@@ -32,6 +32,7 @@ def main():
                         help="Run mode: full (includes output) or presizing (eligibility+waterfall only)")
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose (DEBUG) console output")
     parser.add_argument("--progress", "-p", action="store_true", help="Show progress bars for pipeline stages (requires rich)")
+    parser.add_argument("--channels", "-ch", help="Comma-separated list of channels to process (default: all)")
     # Stop the initialization spinner before parsing arguments (so help prints cleanly)
     try:
         _spinner.stop()
@@ -47,6 +48,26 @@ def main():
     grant_group_rwx(logs_dir_root)
     # Load configuration
     config = load_config(args.config)
+
+    # ------------------------------------------------------------------
+    # Optional channel filtering via --channels (comma-separated list)
+    # ------------------------------------------------------------------
+    if args.channels:
+        wanted = {c.strip() for c in args.channels.split(',') if c.strip()}
+        # Validate against defined eligibility channels
+        defined_channels = set(config.eligibility.conditions.channels)
+        unknown = wanted - defined_channels
+        if unknown:
+            parser.error(f"Unknown channel(s) in --channels: {', '.join(sorted(unknown))}")
+
+        # Filter Eligibility channels
+        config.eligibility.conditions.channels = {
+            k: v for k, v in config.eligibility.conditions.channels.items() if k in wanted
+        }
+        # Filter Output channels (silently drop missing ones)
+        config.output.channels = {
+            k: v for k, v in config.output.channels.items() if k in wanted
+        }
     # ------------------------------------------------------------------
     # Derive default log filenames (include offer_code for easy tracing)
     # ------------------------------------------------------------------

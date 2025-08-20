@@ -41,11 +41,32 @@
     {% for chk in seg.checks %}{% if chk not in all_seg_checks %}{% set _ = all_seg_checks.append(chk) %}{% endif %}{% endfor %}
 {% endfor %}
 
-{% set cols_needed = unique_identifiers + all_seg_checks %}
+{# ----------------------------------------------------------------------- #}
+{# Build two parallel lists:                                           #}
+{#   * cols_select – projection list for base_population with AS aliases #}
+{#   * cols_unq     – plain, unqualified column names used downstream   #}
+{# ----------------------------------------------------------------------- #}
+
+{% set cols_select = [] %}
+{% set cols_unq = [] %}
+
+{% set _tmp = unique_identifiers + all_seg_checks %}
+{% for col in _tmp %}
+    {% if '.' in col %}
+        {% set stripped = col.split('.')[-1] %}
+        {% if stripped not in cols_unq %}{% set _ = cols_unq.append(stripped) %}{% endif %}
+        {% set _ = cols_select.append(col ~ ' AS ' ~ stripped) %}
+    {% else %}
+        {% if col not in cols_unq %}{% set _ = cols_unq.append(col) %}{% endif %}
+        {% set _ = cols_select.append(col) %}
+    {% endif %}
+{% endfor %}
+
+{# cols_unq now contains the deduplicated, unqualified column names #}
 
 WITH base_population AS (
     -- Narrow projection to just IDs + segment flag columns to minimise spool
-    SELECT {{ cols_needed | join(', ') }}
+    SELECT {{ cols_select | join(',\n           ') }}
     FROM {{ eligibility_table }} AS c
     WHERE {{ pre_filter }}
 ),
@@ -69,7 +90,7 @@ WITH base_population AS (
 deduped AS (
     SELECT * FROM (
         SELECT
-            bp.{{ cols_needed | join(', bp.') }},
+            bp.{{ cols_unq | join(', bp.') }},
             {{ seg_check_sum }} AS pass_cnt,
             {{ seg_streak_expr }} AS streak_len,
             ROW_NUMBER() OVER (
