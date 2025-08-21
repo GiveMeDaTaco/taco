@@ -163,7 +163,7 @@ class WaterfallEngine:
                     continue
                 raise
 
-    def _prepare_waterfall_steps(self, eligibility_engine):
+    def _prepare_waterfall_steps(self, eligibility_engine, *, emit_sql_log: bool = True):
         """
         Prepares all the groups and SQL generation steps without executing them.
         The results are cached to avoid redundant work.
@@ -221,8 +221,9 @@ class WaterfallEngine:
             }
 
             sql_main = gen.render('waterfall_full.sql.j2', ctx_main)
-            from tlptaco.utils.logging import log_sql_section
-            log_sql_section(f'Waterfall {name} - Base', sql_main)
+            if emit_sql_log:
+                from tlptaco.utils.logging import log_sql_section
+                log_sql_section(f'Waterfall {name} - Base', sql_main)
             sql_jobs.append({'type': 'standard', 'sql': sql_main, 'section_name': 'Base'})
 
             # --- SECTION 2: PER-CHANNEL WATERFALLS ---
@@ -263,7 +264,9 @@ class WaterfallEngine:
                     }
                     sql_chan_ba = gen.render('waterfall_full.sql.j2', ctx_chan_ba)
                     sql_jobs.append({'type': 'standard', 'sql': sql_chan_ba, 'section_name': f'{channel_name} - BA'})
-                    log_sql_section(f'Waterfall {name} - {channel_name} BA', sql_chan_ba)
+                    if emit_sql_log:
+                        from tlptaco.utils.logging import log_sql_section
+                        log_sql_section(f'Waterfall {name} - {channel_name} BA', sql_chan_ba)
 
                 # CHANNEL non-BA segments
                 if channel_cfg.others:
@@ -288,7 +291,9 @@ class WaterfallEngine:
                     }
                     sql_segments = gen.render('waterfall_segments.sql.j2', ctx_segments)
                     sql_jobs.append({'type': 'segments', 'sql': sql_segments})
-                    log_sql_section(f'Waterfall {name} - {channel_name} Segments', sql_segments)
+                    if emit_sql_log:
+                        from tlptaco.utils.logging import log_sql_section
+                        log_sql_section(f'Waterfall {name} - {channel_name} Segments', sql_segments)
 
             out_path = os.path.join(self.cfg.output_directory,
                                     f"waterfall_report_{elig_cfg.eligibility_table}_{name}.xlsx")
@@ -307,7 +312,7 @@ class WaterfallEngine:
         Caches the eligibility_engine for the run() method.
         """
         self.logger.info("Calculating the number of waterfall steps.")
-        self._prepare_waterfall_steps(eligibility_engine)
+        self._prepare_waterfall_steps(eligibility_engine, emit_sql_log=False)
         total_steps = len(self._waterfall_groups)
         self.logger.info(f"Calculation complete: {total_steps} steps (reports).")
         return total_steps
@@ -416,8 +421,8 @@ class WaterfallEngine:
         # that subsequent SQL uses the new base table name.
         self._waterfall_groups = None
 
-        # Prepare SQL jobs (use the volatile table)
-        self._prepare_waterfall_steps(engine_to_use)
+        # Prepare SQL jobs (use the volatile table) with logging enabled
+        self._prepare_waterfall_steps(engine_to_use, emit_sql_log=True)
 
         # No secondary indexes are created – volatile table and full-table
         # aggregates do not benefit from them.
