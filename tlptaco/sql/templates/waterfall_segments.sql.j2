@@ -147,7 +147,7 @@ SELECT section,
        check_name,
        cntr
 FROM (
-    {% for metric in ['unique_drops','incremental_drops','cumulative_drops','regain','remaining'] %}
+    {% for metric in ['unique_drops','incremental_drops','regain'] %}
     {% for col in check_cols %}
     {% set col_idx = loop.index0 %}
     SELECT '{{ seg.name }}'                             AS section,
@@ -181,7 +181,7 @@ FROM (
                {% for chk in check_cols %}{{ chk }}{{ "," if not loop.last }}{% endfor %}
         FROM seg_pool_{{ idx }}
     ) AS flags({{ (uid_cols + check_cols)|join(', ') }})
-    {% if not (metric == 'remaining' and col_idx == check_cols|length -1) %}
+    {% if not (metric == 'regain' and col_idx == check_cols|length -1) %}
     UNION ALL
     {% endif %}
     {% endfor %}

@@ -319,6 +319,67 @@ class WaterfallEngine:
         pivoted['section'] = section_name
         return pivoted
 
+    # ------------------------------------------------------------------
+    # New helper: derive cumulative_drops & remaining in Python
+    # ------------------------------------------------------------------
+
+    def _add_derived_metrics(self, df: pd.DataFrame) -> pd.DataFrame:  # noqa: D401
+        """Return *df* plus calculated cumulative_drops & remaining rows.
+
+        Expects columns: section (optional), stat_name, check_name, cntr
+        The DataFrame may contain multiple sections; processing is done per
+        distinct *section* value (or whole frame when column missing).
+        """
+
+        # Helper to process a subset for one logical section
+        def _process(sub: pd.DataFrame, section_val: str | None):
+            if sub.empty:
+                return sub
+            # Determine starting population for this section
+            sp_ser = sub.loc[sub['stat_name'] == 'initial_population', 'cntr']
+            if sp_ser.empty:
+                return sub  # cannot compute
+            start_pop = int(sp_ser.iloc[0])
+
+            # Order incremental_drops rows as they appear in sub
+            inc_mask = sub['stat_name'] == 'incremental_drops'
+            inc_rows = sub[inc_mask].copy()
+            if inc_rows.empty:
+                return sub
+
+            # Preserve appearance order via existing index
+            inc_rows = inc_rows.sort_index()
+            inc_rows['cumulative_drops'] = inc_rows['cntr'].cumsum()
+            inc_rows['remaining'] = start_pop - inc_rows['cumulative_drops']
+
+            # Build long-format rows for the new metrics
+            new_records = []
+            for _, r in inc_rows.iterrows():
+                new_records.append({
+                    'section': section_val if 'section' in sub.columns else None,
+                    'stat_name': 'cumulative_drops',
+                    'check_name': r['check_name'],
+                    'cntr': int(r['cumulative_drops'])
+                })
+                new_records.append({
+                    'section': section_val if 'section' in sub.columns else None,
+                    'stat_name': 'remaining',
+                    'check_name': r['check_name'],
+                    'cntr': int(r['remaining'])
+                })
+            if new_records:
+                sub = pd.concat([sub, pd.DataFrame(new_records)], ignore_index=True)
+            return sub
+
+        if 'section' in df.columns:
+            sections = []
+            for sec_name, sub_df in df.groupby('section', sort=False):
+                sections.append(_process(sub_df.copy(), sec_name))
+            df_out = pd.concat(sections, ignore_index=True) if sections else df
+        else:
+            df_out = _process(df.copy(), None)
+        return df_out
+
     def run(self, eligibility_engine=None, progress=None):
         """
         Orchestrates the waterfall report. The eligibility_engine is optional
@@ -431,7 +492,8 @@ class WaterfallEngine:
                         df_raw = df_raw.rename(columns={'value': 'cntr'})
 
                     if job['type'] == 'standard':
-                        df_pivoted = self._pivot_waterfall_df(df_raw, job['section_name'])
+                        df_derived = self._add_derived_metrics(df_raw)
+                        df_pivoted = self._pivot_waterfall_df(df_derived, job['section_name'])
                         all_report_sections.append(df_pivoted)
 
                         # Capture starting population if not yet stored for this group
@@ -441,6 +503,7 @@ class WaterfallEngine:
                                 starting_pops[group['name']] = int(sp.iloc[0])
 
                     elif job['type'] == 'segments':
+                        df_raw = self._add_derived_metrics(df_raw)
                         detail_rows = df_raw[df_raw['stat_name'] != 'Records Claimed'].copy()
                         for section_name in detail_rows['section'].unique():
                             section_df = self._pivot_waterfall_df(

@@ -123,20 +123,7 @@ FROM (
 
     UNION ALL
 
-    -- ③  Drop Cumulative (cumulative_drops)
-    {% for col in check_columns %}
-    SELECT 'cumulative_drops' AS stat_name,
-           '{{ col }}'       AS check_name,
-           SUM(
-               CASE WHEN {% for prev in check_columns[:loop.index0+1] %} {{ prev }} = 0 {% if not loop.last %} OR {% endif %}{% endfor %}
-               THEN 1 ELSE 0 END) AS cntr
-    FROM flags
-    {% if not loop.last %}UNION ALL{% endif %}
-    {% endfor %}
-
-    UNION ALL
-
-    -- ④  Regain If No Scrub (regain)
+    -- ③  Regain If No Scrub (regain)
     {% for col in check_columns %}
     SELECT 'regain' AS stat_name,
            '{{ col }}' AS check_name,
@@ -148,16 +135,5 @@ FROM (
     {% if not loop.last %}UNION ALL{% endif %}
     {% endfor %}
 
-    UNION ALL
-
-    -- ⑤  Remaining Population (remaining)
-    {% for col in check_columns %}
-    SELECT 'remaining' AS stat_name,
-           '{{ col }}' AS check_name,
-           SUM(CASE WHEN {{ col }} = 1
-                    {%- for prev in check_columns[:loop.index0] %} AND {{ prev }} = 1{%- endfor %}
-               THEN 1 ELSE 0 END) AS cntr
-    FROM flags
-    {% if not loop.last %}UNION ALL{% endif %}
-    {% endfor %}
+    -- Remaining / cumulative_drops will be computed in Python
 ) AS metrics;
