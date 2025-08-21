@@ -98,14 +98,17 @@ class WaterfallEngine:
         for uid in elig_cfg.unique_identifiers:
             if '.' in uid:
                 plain = uid.split('.')[-1]
-                uid_cols_sql.append(f"{uid} AS {plain}")
+                # Always reference the *eligibility table alias* 'c.' to avoid
+                # dangling table aliases from the original identifier.
+                uid_cols_sql.append(f"c.{plain} AS {plain}")
                 uid_cols_pi.append(plain)
             else:
-                uid_cols_sql.append(uid)
+                uid_cols_sql.append(f"c.{uid}")
                 uid_cols_pi.append(uid)
 
         # 3. Flag columns as simple names (smart table already has them)
-        flag_cols_sql = ', '.join(flag_cols)
+        # Flag columns referenced from table alias 'c.'
+        flag_cols_sql_list = [f"c.{col}" for col in flag_cols]
 
         # 4. Build expressions for pass_cnt and streak_len (needed for
         #    deduplication ranking)
@@ -118,8 +121,8 @@ class WaterfallEngine:
         streak_expr = ' + '.join(streak_parts) if streak_parts else '0'
 
         # 5. Render SQL from template -------------------------------------------------
-        select_cols_alias = uid_cols_sql + flag_cols
-        select_cols_inner = uid_cols_sql + flag_cols + [
+        select_cols_alias = uid_cols_sql + flag_cols  # outer select uses aliases where provided
+        select_cols_inner = uid_cols_sql + flag_cols_sql_list + [
             f"{pass_cnt_expr} AS pass_cnt",
             f"{streak_expr} AS streak_len",
             (
