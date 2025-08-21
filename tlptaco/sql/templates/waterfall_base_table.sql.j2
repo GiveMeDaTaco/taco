@@ -1,0 +1,26 @@
+-- ---------------------------------------------------------------------------
+-- Build session-local VOLATILE base table for waterfall metrics
+-- ---------------------------------------------------------------------------
+
+DROP TABLE {{ base_table }};
+
+CREATE MULTISET VOLATILE TABLE {{ base_table }}
+, NO FALLBACK , NO BEFORE JOURNAL , NO AFTER JOURNAL
+AS (
+    SELECT {{ select_cols_alias | join(',\n           ') }}
+    FROM (
+        SELECT {{ select_cols_inner | join(', ') }}
+        FROM {{ eligibility_table }} c
+    ) dt
+    WHERE _rn = 1
+) WITH DATA
+PRIMARY INDEX ({{ uid_cols_pi | join(', ') }})
+ON COMMIT PRESERVE ROWS;
+
+-- Collect minimal statistics (PI columns + first 10 flag columns)
+{% for col in collect_pi_cols %}
+COLLECT STATISTICS COLUMN ({{ col }}) ON {{ base_table }};
+{% endfor %}
+{% for col in collect_flag_cols %}
+COLLECT STATISTICS COLUMN ({{ col }}) ON {{ base_table }};
+{% endfor %}

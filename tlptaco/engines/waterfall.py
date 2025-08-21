@@ -117,38 +117,38 @@ class WaterfallEngine:
             streak_parts.append(inner)
         streak_expr = ' + '.join(streak_parts) if streak_parts else '0'
 
-        # 5. Compose SQL – drop existing VT just in case
-        sql_statements: list[str] = []
-        sql_statements.append(f"DROP TABLE {self._base_table};")
+        # 5. Render SQL from template -------------------------------------------------
+        select_cols_alias = uid_cols_sql + flag_cols
+        select_cols_inner = uid_cols_sql + flag_cols + [
+            f"{pass_cnt_expr} AS pass_cnt",
+            f"{streak_expr} AS streak_len",
+            (
+                "ROW_NUMBER() OVER (PARTITION BY "
+                + ', '.join(uid_cols_pi)
+                + " ORDER BY pass_cnt DESC, streak_len DESC) AS _rn"
+            ),
+        ]
 
-        select_cols_alias = ',\n           '.join(uid_cols_sql + flag_cols)
-        select_cols_inner = ', '.join(uid_cols_sql + flag_cols +
-                                      [f"{pass_cnt_expr} AS pass_cnt",
-                                       f"{streak_expr} AS streak_len",
-                                       "ROW_NUMBER() OVER (PARTITION BY " + ', '.join(uid_cols_pi) +
-                                       " ORDER BY pass_cnt DESC, streak_len DESC) AS _rn"])
+        tmpl_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'sql', 'templates'))
+        gen = SQLGenerator(tmpl_dir)
+        context = {
+            'base_table': self._base_table,
+            'eligibility_table': elig_cfg.eligibility_table,
+            'select_cols_alias': select_cols_alias,
+            'select_cols_inner': select_cols_inner,
+            'uid_cols_pi': uid_cols_pi,
+            'collect_pi_cols': uid_cols_pi[:3],
+            'collect_flag_cols': flag_cols[:10],
+        }
 
-        create_sql = f"""
-CREATE MULTISET VOLATILE TABLE {self._base_table}
-, NO FALLBACK , NO BEFORE JOURNAL , NO AFTER JOURNAL
-AS (
-    SELECT {select_cols_alias}
-    FROM (
-        SELECT {select_cols_inner}
-        FROM {elig_cfg.eligibility_table} c
-    ) dt
-    WHERE _rn = 1
-) WITH DATA
-PRIMARY INDEX ({', '.join(uid_cols_pi)})
-ON COMMIT PRESERVE ROWS;
-"""
-        sql_statements.append(create_sql)
+        sql_script = gen.render('waterfall_base_table.sql.j2', context)
 
-        # Collect minimal stats (PI + first 10 flag columns – cheap)
-        for col in uid_cols_pi[:3]:
-            sql_statements.append(f"COLLECT STATISTICS COLUMN ({col}) ON {self._base_table};")
-        for col in flag_cols[:10]:
-            sql_statements.append(f"COLLECT STATISTICS COLUMN ({col}) ON {self._base_table};")
+        # Log rendered SQL for visibility/copy-paste
+        from tlptaco.utils.logging import log_sql_section
+        log_sql_section('Waterfall BaseTable', sql_script)
+
+        # Split into individual statements on semicolon but keep order
+        sql_statements = [stmt.strip() for stmt in sql_script.split(';') if stmt.strip()]
 
         # Execute all statements; ignore DROP failures
         for stmt in sql_statements:
