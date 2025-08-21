@@ -324,6 +324,18 @@ class WaterfallEngine:
         Orchestrates the waterfall report. The eligibility_engine is optional
         if it was already provided in a prior call to num_steps().
         """
+
+        # --------------------------------------------------------------
+        # Attempt to drop any leftover volatile table from previous runs
+        # --------------------------------------------------------------
+        try:
+            if self.runner is not None:
+                self.runner.run("DROP TABLE vt_wf_base;")
+        except Exception as exc:
+            # Not fatal – log at WARNING level if logger present, else ignore
+            if self.logger is not None:
+                self.logger.warning(f"DROP TABLE vt_wf_base failed (might not exist): {exc}")
+
         # Determine which eligibility engine to use
         engine_to_use = eligibility_engine or self._eligibility_engine
 
@@ -336,8 +348,8 @@ class WaterfallEngine:
         # --------------------------------------------------------------
         self._create_volatile_base(engine_to_use)
 
-        # Invalidate any cached preparation (built perhaps by num_steps())
-        # so that subsequent SQL uses the new base table name.
+        # Invalidate any cached preparation (built perhaps by num_steps()) so
+        # that subsequent SQL uses the new base table name.
         self._waterfall_groups = None
 
         # Prepare SQL jobs (use the volatile table)

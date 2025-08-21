@@ -2,8 +2,6 @@
 -- Build session-local VOLATILE base table for waterfall metrics
 -- ---------------------------------------------------------------------------
 
-DROP TABLE {{ base_table }};
-
 CREATE MULTISET VOLATILE TABLE {{ base_table }}
 , NO FALLBACK , NO BEFORE JOURNAL , NO AFTER JOURNAL
 AS (
