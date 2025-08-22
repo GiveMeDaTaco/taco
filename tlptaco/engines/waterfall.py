@@ -96,7 +96,7 @@ class WaterfallEngine:
         uid_cols_sql: list[str] = []  # expressions in SELECT list
         uid_cols_pi: list[str] = []   # plain names for PRIMARY INDEX
 
-        def add_alias(col_names: List[str], alias: str):
+        def add_alias(col_names: list[str], alias: str):
             return_cols_sql = []
             return_cols_pi = []
             for col in col_names:
@@ -159,16 +159,8 @@ class WaterfallEngine:
 
         # Split into individual statements on semicolon but keep order
         sql_statements = [stmt.strip() for stmt in sql_script.split(';') if stmt.strip()]
+        self._volatile_table_sql = sql_statements
 
-        # Execute all statements; ignore DROP failures
-        for stmt in sql_statements:
-            try:
-                self.runner.run(stmt)
-            except Exception as ex:
-                if 'DROP TABLE' in stmt:
-                    # VT likely didn't exist – fine
-                    continue
-                raise
 
     def _prepare_waterfall_steps(self, eligibility_engine, *, emit_sql_log: bool = True):
         """
@@ -319,8 +311,9 @@ class WaterfallEngine:
         Caches the eligibility_engine for the run() method.
         """
         self.logger.info("Calculating the number of waterfall steps.")
+        self._create_volatile_base(eligibility_engine)
         self._prepare_waterfall_steps(eligibility_engine, emit_sql_log=False)
-        total_steps = len(self._waterfall_groups)
+        total_steps = len(self._waterfall_groups) + len(self._volatile_table_sql)
         self.logger.info(f"Calculation complete: {total_steps} steps (reports).")
         return total_steps
 
@@ -497,6 +490,15 @@ class WaterfallEngine:
             })
 
         conditions_df = pd.DataFrame(enriched_rows).set_index('check_name')
+
+        try:
+            for statement in self._volatile_table_sql:
+                self.runner.run(statement)
+                if progress:
+                    progress.update('Waterfall')
+        except Exception as e:
+            self.logger.error(f"There was an issue with creating the volatile table: {e}")
+            raise e
 
         for group in self._waterfall_groups:
             all_report_sections = []
