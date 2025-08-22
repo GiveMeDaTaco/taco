@@ -66,21 +66,30 @@ WITH base_population AS (
 -- additional ROW_NUMBER ranking used previously is unnecessary.  We keep a
 -- simple pass-through CTE so that the downstream query structure remains
 -- unchanged.
+-- ---------------------------------------------------------------------------
+-- Deduplicate **per group** on the grouping columns supplied via uid_cols.
+-- This guarantees each entity contributes at most one row to the waterfall
+-- counts even when the volatile base table is unique on a *different* set of
+-- identifiers (the global eligibility UIDs).
+-- ---------------------------------------------------------------------------
+
 deduped AS (
     SELECT
         {% for uid in uid_cols %}{{ uid }}{{ "," if not loop.last }}{% endfor %}
         {%- if all_cols %}, {% endif %}
         {% for col in all_cols %}{{ col }}{{ "," if not loop.last }}{% endfor %}
+        , ROW_NUMBER() OVER (PARTITION BY {{ uid_cols | join(', ') }} ORDER BY 1) AS _rn
     FROM base_population
 ),
 
 flags AS (
-    -- Final, lightweight set used by the metric UNIONs below.
+    -- Keep only the first row per *group* identifier set.
     SELECT
         {% for uid in uid_cols %}{{ uid }}{{ "," if not loop.last }}{% endfor %}
         {%- if all_cols %}, {% endif %}
         {% for col in all_cols %}{{ col }}{{ "," if not loop.last }}{% endfor %}
     FROM deduped
+    WHERE _rn = 1
 )
 
 -- ---------------------------------------------------------------------------

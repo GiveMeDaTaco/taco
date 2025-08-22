@@ -89,10 +89,19 @@ WITH base_population AS (
 
 -- Rows are already unique per UID in the volatile base table; keep a simple
 -- pass-through CTE for compatibility with downstream references.
+-- Rows in the volatile base table are unique on the global UID set, which
+-- may be *wider* than the grouping columns used for this waterfall.  Ensure
+-- uniqueness on the *current* uid_cols by applying a ROW_NUMBER partition.
+
 deduped AS (
-    SELECT
-        {{ cols_unq | join(', ') }}
-    FROM base_population AS bp
+    SELECT *
+    FROM (
+        SELECT
+            {{ cols_unq | join(', ') }},
+            ROW_NUMBER() OVER (PARTITION BY {{ uid_cols | join(', ') }} ORDER BY 1) AS _rn
+        FROM base_population AS bp
+    ) tmp
+    WHERE _rn = 1
 ),
 
 -- ---------------------------------------------------------------------------
