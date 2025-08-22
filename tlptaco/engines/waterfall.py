@@ -220,9 +220,9 @@ class WaterfallEngine:
             }
 
             sql_main = gen.render('waterfall_full.sql.j2', ctx_main)
-            if emit_sql_log:
-                from tlptaco.utils.logging import log_sql_section
-                log_sql_section(f'Waterfall {name} - Base', sql_main)
+
+            from tlptaco.utils.logging import log_sql_section
+            log_sql_section(f'Waterfall {name} - Base', sql_main)
             sql_jobs.append({'type': 'standard', 'sql': sql_main, 'section_name': 'Base'})
 
             # --- SECTION 2: PER-CHANNEL WATERFALLS ---
@@ -343,13 +343,39 @@ class WaterfallEngine:
         def _process(sub: pd.DataFrame, section_val: str | None):
             if sub.empty:
                 return sub
-            # Determine starting population for this section
-            sp_ser = sub.loc[sub['stat_name'] == 'initial_population', 'cntr']
-            if sp_ser.empty:
-                return sub  # cannot compute
-            start_pop = int(sp_ser.iloc[0])
+            # ----------------------------------------------------------
+            # Determine starting population for this *section* (template)
+            # ----------------------------------------------------------
+            #   • BA templates include an explicit 'initial_population'
+            #     row emitted by waterfall_full.sql.j2 – keep legacy path.
+            #   • Non-BA templates (waterfall_segments.sql.j2) have no such
+            #     row.  Their starting population equals the size of the
+            #     candidate pool fed into the template, which can be
+            #     reconstructed from the SQL output:
+            #         start_pop = Records Claimed  +  Σ incremental_drops
+            #     (unique_drops & regain are alternative cuts of the same
+            #     population and therefore *must not* be added.)
 
-            # Order incremental_drops rows as they appear in sub
+            sp_ser = sub.loc[sub['stat_name'] == 'initial_population', 'cntr']
+
+            if not sp_ser.empty:
+                start_pop = int(sp_ser.iloc[0])
+            else:
+                # Fallback for non-BA.
+                rc_ser = sub.loc[sub['stat_name'] == 'Records Claimed', 'cntr']
+                if rc_ser.empty:
+                    # Cannot compute without either initial_population or
+                    # Records Claimed – keep original frame unchanged.
+                    return sub
+
+                incr_total = sub.loc[sub['stat_name'] == 'incremental_drops', 'cntr'].sum()
+                start_pop = int(rc_ser.iloc[0]) + int(incr_total)
+
+            # ----------------------------------------------------------
+            # Order *incremental_drops* rows exactly as they appear in the
+            # original SQL output so our cumulative calculation matches the
+            # display order defined by the YAML configuration.
+            # ----------------------------------------------------------
             inc_mask = sub['stat_name'] == 'incremental_drops'
             inc_rows = sub[inc_mask].copy()
             if inc_rows.empty:
