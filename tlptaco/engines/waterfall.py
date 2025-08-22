@@ -95,16 +95,23 @@ class WaterfallEngine:
         #    volatile table uses simple names (no schema/alias prefixes).
         uid_cols_sql: list[str] = []  # expressions in SELECT list
         uid_cols_pi: list[str] = []   # plain names for PRIMARY INDEX
-        for uid in elig_cfg.unique_identifiers:
-            if '.' in uid:
-                plain = uid.split('.')[-1]
-                # Always reference the *eligibility table alias* 'c.' to avoid
-                # dangling table aliases from the original identifier.
-                uid_cols_sql.append(f"c.{plain} AS {plain}")
-                uid_cols_pi.append(plain)
-            else:
-                uid_cols_sql.append(f"c.{uid}")
-                uid_cols_pi.append(uid)
+
+        def add_alias(col_names: List[str], alias: str):
+            return_cols_sql = []
+            return_cols_pi = []
+            for col in col_names:
+                if '.' in col:
+                    plain = col.split('.')[-1]
+                    return_cols_sql.append(f"{alias}.{plain} AS {plain}")
+                    return_cols_pi.append(plain)
+                else:
+                    return_cols_sql.append(f"{alias}.{col} AS {col}")
+                    return_cols_pi.append(col)
+
+            return return_cols_sql, return_cols_pi
+
+        uid_cols_sql, uid_cols_pi = add_alias(elig_cfg.unique_identifiers, 'c')
+        outer_uid_cols_sql, _ = add_alias(elig_cfg.unique_identifiers, 'dt')
 
         # 3. Flag columns as simple names (smart table already has them)
         # Flag columns referenced from table alias 'c.'
@@ -121,7 +128,7 @@ class WaterfallEngine:
         streak_expr = ' + '.join(streak_parts) if streak_parts else '0'
 
         # 5. Render SQL from template -------------------------------------------------
-        select_cols_alias = uid_cols_sql + flag_cols  # outer select uses aliases where provided
+        select_cols_alias = outer_uid_cols_sql + flag_cols  # outer select uses aliases where provided
         select_cols_inner = uid_cols_sql + flag_cols_sql_list + [
             f"{pass_cnt_expr} AS pass_cnt",
             f"{streak_expr} AS streak_len",
@@ -140,8 +147,8 @@ class WaterfallEngine:
             'select_cols_alias': select_cols_alias,
             'select_cols_inner': select_cols_inner,
             'uid_cols_pi': uid_cols_pi,
-            'collect_pi_cols': uid_cols_pi[:3],
-            'collect_flag_cols': flag_cols[:10],
+            'collect_pi_cols': uid_cols_pi,
+            'collect_flag_cols': flag_cols,
         }
 
         sql_script = gen.render('waterfall_base_table.sql.j2', context)
