@@ -214,9 +214,9 @@ class OutputEngine:
                         try:
                             self.runner.run(
                                 f"GRANT SELECT,INSERT,UPDATE,DELETE ON {table_full} TO {usr};")
-                            self.runner.run(f"GRANT DROP ON {table_full} TO {usr};")
+                            self.runner.run(f"GRANT DROP TABLE ON {table_full} TO {usr};")
                         except Exception as e:
-                            self.logger.debug(f"Grant failed for {usr} on {table_full}: {e}")
+                            self.logger.warning(f"Grant failed for {usr} on {table_full}: {e}")
             else:
                 df = self.runner.to_df(job['sql'])
                 self.logger.info(f"Fetched {len(df)} rows for channel {channel_name}")

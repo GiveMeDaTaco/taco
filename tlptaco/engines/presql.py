@@ -69,8 +69,12 @@ class PreSQLEngine:
         self._layer_name = layer_name
 
         # Prepared lists filled by _prepare()
-        # Caches prepared tasks.  Each SQL task tuple is (file_path, statement, error_flag)
+        #   • _sql_tasks : list of (file_path, sql_statement, error_flag)
+        #   • _py_tasks  : list of (file_path, error_flag)
+        #   • _sas_tasks : list of (file_path, error_flag)
         self._sql_tasks: List[Tuple[str, str, bool]] | None = None
+        self._py_tasks: List[Tuple[str, bool]] | None = None
+        self._sas_tasks: List[Tuple[str, bool]] | None = None
         # Distinct-count analytic tasks
         # tuple: (file_path, table, column_tuple, error_flag, grant_flag)
         self._distinct_tasks: List[Tuple[str, str, Tuple[str, ...], bool, bool]] | None = None
@@ -105,12 +109,39 @@ class PreSQLEngine:
             return
 
         self._sql_tasks = []
+        self._py_tasks = []
+        self._sas_tasks = []
         self._distinct_tasks = []
         self._group_tasks = []
         self._preview_tasks = []
 
         for item in self.files_cfg:
             path = item.path
+            # Branch on file extension – .sql (default) versus .py (new behaviour)
+            lowered = path.lower()
+            if lowered.endswith(".py"):
+                # No SQL parsing – just schedule python execution.
+                self._py_tasks.append((path, item.error))
+
+                # Analytics with a .py script make little sense; warn once.
+                if item.analytics:
+                    self.logger.warning(
+                        f"Analytics configuration ignored for Python pre/post script {path} – not applicable.")
+                # Skip further processing for this file
+                continue
+
+            if lowered.endswith(".sas"):
+                # Schedule SAS execution via external command.
+                self._sas_tasks.append((path, item.error))
+
+                # Analytics with a .py script make little sense; warn once.
+                if item.analytics:
+                    self.logger.warning(
+                        f"Analytics configuration ignored for SAS pre/post script {path} – not applicable.")
+                # Skip further processing for this file
+                continue
+
+            # ----------------- existing .sql behaviour -------------------
             try:
                 with open(path, "r", encoding="utf-8") as f:
                     content = f.read()
@@ -153,12 +184,14 @@ class PreSQLEngine:
         """Total number of *individual* tasks (SQL statements + analytics)."""
         self._prepare()
         sql_cnt = len(self._sql_tasks or [])
+        py_cnt = len(self._py_tasks or [])
+        sas_cnt = len(self._sas_tasks or [])
         ana_cnt = (
             len(self._distinct_tasks or []) +
             len(self._group_tasks or []) +
             len(self._preview_tasks or [])
         )
-        return sql_cnt + ana_cnt
+        return sql_cnt + py_cnt + sas_cnt + ana_cnt
 
     def run(self, progress=None):
         """Execute all tasks in order.
@@ -184,6 +217,54 @@ class PreSQLEngine:
                 # With error=False we log a warning and continue
                 self.logger.warning(
                     f"Pre-SQL file {_file} statement failed but 'error' is False – continuing. Error: {e}")
+            finally:
+                if progress:
+                    progress.update(layer_name)
+
+        # 1b. Execute Python scripts (".py" paths)
+        import subprocess, sys
+        for py_path, err_flag in self._py_tasks or []:
+            self.logger.info(f"Executing pre-SQL Python script {py_path}")
+            try:
+                # Run script in its directory so relative imports / file paths work naturally
+                subprocess.run([sys.executable, py_path], check=True, cwd=os.path.dirname(py_path))
+            except Exception as e:
+                if err_flag:
+                    self.logger.error(
+                        f"Python script {py_path} failed and error flag is True – aborting execution: {e}")
+                    raise
+                self.logger.warning(
+                    f"Python script {py_path} failed but 'error' is False – continuing. Error: {e}")
+            finally:
+                if progress:
+                    progress.update(layer_name)
+
+        # 1c. Execute SAS scripts (.sas) using external SAS command if available
+        import shutil
+        sas_cmd_default = os.environ.get('TLPTACO_SAS_CMD', 'sas')
+        sas_available = shutil.which(sas_cmd_default) is not None
+        for sas_path, err_flag in self._sas_tasks or []:
+            self.logger.info(f"Executing pre-SQL SAS script {sas_path}")
+            if not sas_available:
+                msg = f"SAS command '{sas_cmd_default}' not found in PATH"
+                if err_flag:
+                    self.logger.error(msg)
+                    raise RuntimeError(msg)
+                self.logger.warning(msg + " – skipping script as error flag is False")
+                if progress:
+                    progress.update(layer_name)
+                continue
+
+            cmd = [sas_cmd_default, sas_path, '-nosplash', '-noterminal']
+            try:
+                subprocess.run(cmd, check=True, cwd=os.path.dirname(sas_path))
+            except Exception as e:
+                if err_flag:
+                    self.logger.error(
+                        f"SAS script {sas_path} failed and error flag is True – aborting execution: {e}")
+                    raise
+                self.logger.warning(
+                    f"SAS script {sas_path} failed but 'error' is False – continuing. Error: {e}")
             finally:
                 if progress:
                     progress.update(layer_name)
